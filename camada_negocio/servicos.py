@@ -328,40 +328,6 @@ class ServicoAdmin:
         """Busca e retorna a lista de todos os eventos."""
         print("DEBUG[Serviço]: Solicitando a lista de todos os eventos ao DAO.")
         return self.evento_dao.buscar_todos()
-
-    '''
-    def adicionar_evento(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_str):
-        """
-        Processa os dados recebidos da rota e os envia para o DAO.
-        A string de 'regra_recorrencia' já vem pronta da camada de apresentação.
-        """
-        print(f"DEBUG[Serviço]: Adicionando novo evento do tipo '{tipo_evento}'.")
-        
-        # Processa a lista de quadras (de strings para tuplas de inteiros)
-        lista_quadras_ids = []
-        if lista_quadras_str:
-            for quadra_str in lista_quadras_str:
-                partes = quadra_str.split('-')
-                if len(partes) == 2:
-                    try:
-                        lista_quadras_ids.append((int(partes[0]), int(partes[1])))
-                    except ValueError:
-                        print(f"Aviso[Serviço]: Valor de quadra inválido ignorado: '{quadra_str}'")
-        
-        # Chama o DAO com todos os dados já processados
-        return self.evento_dao.criar(
-            cpf_admin_organizador,
-            nome_evento,
-            desc_evento,
-            tipo_evento,
-            dados_tempo,
-            lista_quadras_ids
-        )
-    '''
-    
-    
-    
-    
     
     def adicionar_evento(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_str):
         """
@@ -530,13 +496,6 @@ class ServicoAdmin:
             dados_tempo, lista_quadras_ids
         )
         
-        
-        
-        
-        
-        
-        
-
     def _criar_agendamento_para_evento(self, cpf_admin, id_ginasio, num_quadra, data_ini, data_fim, nome_evento):
         """
         Método auxiliar para criar um agendamento específico para um evento
@@ -569,7 +528,6 @@ class ServicoAdmin:
         print(f"DEBUG[Serviço]: Removendo evento ID {id_evento}.")
         return self.evento_dao.excluir(id_evento)
 
-# No servicos.py - atualizar a classe ServicoBolsista
 
 class ServicoBolsista:
     def __init__(self):
@@ -797,8 +755,6 @@ class ServicoBolsista:
             conexao.close()
             
         return sucesso
-
-# No servicos.py - método buscar_todos_agendamentos_bolsista com logs
 
     def buscar_todos_agendamentos_bolsista(self, cpf_bolsista):
         """Busca todos os agendamentos feitos pelo bolsista"""

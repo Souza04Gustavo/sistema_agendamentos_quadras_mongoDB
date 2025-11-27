@@ -2,22 +2,19 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from datetime import datetime, timedelta
 from camada_dados.usuario_dao import UsuarioDAO
 from camada_dados.agendamento_dao  import AgendamentoDAO
-from modelos.usuario import Aluno, Funcionario, Admin, Servidor # Importe todas as classes necessárias
+from modelos.usuario import Aluno, Funcionario, Admin, Servidor
 from camada_negocio.servicos import ServicoLogin, ServicoAdmin, ServicoBolsista
-from camada_dados.agendamento_dao import buscar_agendamentos_por_usuario
-from camada_dados.agendamento_dao import buscar_agendamentos_por_quadra
-from camada_dados.agendamento_dao import buscar_quadras_por_ginasio
-from camada_dados.agendamento_dao import buscar_ginasios
-from camada_dados.agendamento_dao import get_ginasio_por_id
-from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento, verificar_usuario_existe
+
+from camada_dados.agendamento_dao import buscar_quadras_por_ginasio, verificar_disponibilidade,get_ginasio_por_id,  criar_agendamento,buscar_agendamentos_por_quadra,  verificar_usuario_existe, buscar_ginasios, buscar_agendamentos_por_usuario
+
 from camada_dados.mongo_config import conectar_mongo
 import re
 
-import os # Para a secret_key
+import os
 
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)  # Ou uma chave fixa para desenvolvimento
+app.secret_key = os.urandom(24)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 
@@ -432,95 +429,6 @@ def admin_adicionar_quadra():
     return render_template('admin_adicionar_quadra.html', ginasios=lista_de_ginasios)
 
 
-'''
-# --- ROTA DE ADIÇÃO DE USUÁRIO (MODIFICADA) ---
-@app.route('/admin/usuarios/novo', methods=['GET', 'POST'])
-def admin_adicionar_usuario():
-    # Proteção da rota
-    if session.get('usuario_logado', {}).get('tipo') != 'admin':
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('index'))
-    
-    supervisores = usuario_dao.buscar_todos_os_servidores()
-
-    if request.method == 'POST':
-        tipo_usuario = request.form.get('tipo_usuario')
-
-        # Campos Comuns (obrigatórios)
-        cpf = request.form['cpf']
-        nome = request.form['nome']
-        email = request.form['email']
-        senha = request.form['senha']
-        data_nasc = request.form['data_nasc']
-
-        novo_usuario = None
-        try:
-            if tipo_usuario == 'aluno':
-                matricula = get_form_value('matricula')
-                curso = get_form_value('curso')
-                ano_inicio = get_form_value('ano_inicio', cast_type=int)
-
-                # Cria um Aluno regular
-                novo_usuario = Aluno(cpf, nome, email, senha, data_nasc, matricula, curso, ano_inicio, is_bolsista=False)
-
-            elif tipo_usuario == 'bolsista':
-                matricula = get_form_value('matricula')
-                curso = get_form_value('curso')
-                ano_inicio = get_form_value('ano_inicio', cast_type=int)
-                valor_remuneracao = get_form_value('valor_remuneracao', cast_type=float)
-                carga_horaria = get_form_value('carga_horaria', cast_type=int)
-                horario_inicio = get_form_value('horario_inicio') # 'HH:MM'
-                horario_fim = get_form_value('horario_fim')     # 'HH:MM'
-                id_supervisor_servidor = get_form_value('id_supervisor_servidor', cast_type=int)
-
-                # Cria um Aluno Bolsista, usando o novo parâmetro is_bolsista=True
-                novo_usuario = Aluno(
-                    cpf, nome, email, senha, data_nasc, matricula, curso, ano_inicio,
-                    is_bolsista=True, # IMPORTANTE: Indica que é bolsista
-                    valor_remuneracao=valor_remuneracao,
-                    carga_horaria=carga_horaria,
-                    horario_inicio=horario_inicio,
-                    horario_fim=horario_fim,
-                    id_supervisor_servidor=id_supervisor_servidor
-                )
-            
-            elif tipo_usuario == 'funcionario':
-                id_servidor = get_form_value('id_servidor')
-                data_admissao = get_form_value('data_admissao')
-                departamento = get_form_value('departamento')
-                cargo = get_form_value('cargo')
-                novo_usuario = Funcionario(cpf, nome, email, senha, data_nasc, id_servidor, data_admissao, departamento, cargo)
-
-            elif tipo_usuario == 'admin':
-                id_servidor = get_form_value('id_servidor')
-                data_admissao = get_form_value('data_admissao')
-                nivel_acesso = get_form_value('nivel_acesso', default=1, cast_type=int)
-                area_responsabilidade = get_form_value('area_responsabilidade')
-                novo_usuario = Admin(cpf, nome, email, senha, data_nasc, id_servidor, data_admissao,
-                                     nivel_acesso=nivel_acesso, area_responsabilidade=area_responsabilidade)
-
-            else:
-                flash('Tipo de usuário inválido selecionado!', 'danger')
-                return redirect(url_for('admin_adicionar_usuario'))
-
-            if novo_usuario and usuario_dao.salvar(novo_usuario): # Usa o DAO diretamente aqui
-                flash(f'{tipo_usuario.capitalize()} "{nome}" adicionado com sucesso!', 'success')
-                return redirect(url_for('admin_gerenciar_usuarios'))
-            elif not novo_usuario:
-                flash('Erro interno: O objeto de usuário não foi criado.', 'danger')
-            else:
-                flash(f'Erro ao adicionar {tipo_usuario}. Verifique o console do servidor para mais detalhes.', 'danger')
-
-        except Exception as e:
-            flash(f'Ocorreu um erro inesperado: {e}', 'danger')
-            print(f"Erro ao processar formulário de adicionar usuário: {e}")
-
-    # Renderiza o template, passando a lista de supervisores
-    return render_template('admin_adicionar_usuario.html', supervisores=supervisores)
-'''
-
-
-
 @app.route('/admin/usuarios/novo', methods=['GET', 'POST'])
 def admin_adicionar_usuario():
     # Proteção da rota
@@ -551,73 +459,89 @@ def admin_adicionar_usuario():
 
 
 
-
 @app.route('/admin/materiais', methods=['GET', 'POST'])
 def admin_gerenciar_materiais():
+    # Proteção da rota
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
 
+    # Lógica POST para exclusão
     if request.method == 'POST':
         id_material = request.form.get('id_material')
-        acao = request.form.get('acao')
-
-        if acao == 'excluir':
-            sucesso = servico_admin.remover_material(id_material)
-            if sucesso:
-                flash('Material esportivo excluído com sucesso!', 'success')
-            else:
-                flash('Erro ao excluir o material. Ele pode estar em uso em um agendamento.', 'error')
+        
+        # Delega a ação de remoção para a camada de serviço
+        sucesso = servico_admin.remover_material(id_material)
+        
+        if sucesso:
+            flash('Material esportivo excluído com sucesso!', 'success')
+        else:
+            flash('Erro ao excluir o material. Ele pode estar em uso em um agendamento.', 'error')
         
         return redirect(url_for('admin_gerenciar_materiais'))
 
+    # Lógica GET para listar os materiais
+    # Delega a busca para a camada de serviço
     lista_de_materiais = servico_admin.listar_materiais()
     
     return render_template('admin_gerenciar_materiais.html', materiais=lista_de_materiais)
 
 @app.route('/admin/materiais/form', defaults={'id_material': None}, methods=['GET', 'POST'])
-@app.route('/admin/materiais/form/<int:id_material>', methods=['GET', 'POST'])
+@app.route('/admin/materiais/form/<id_material>', methods=['GET', 'POST'])
 def admin_form_material(id_material):
+    # Proteção da rota
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
     
-    lista_de_ginasios = buscar_ginasios()
-    status_possiveis = ['bom', 'danificado', 'manutencao']
-    material_existente = None
-    
-    if id_material:
-        todos_materiais = servico_admin.listar_materiais()
-        material_existente = next((m for m in todos_materiais if m['id_material'] == id_material), None)
-
+    # Lógica POST para salvar (criar ou editar)
     if request.method == 'POST':
-        id_ginasio = get_form_value('id_ginasio') # Usando get_form_value
-        nome = get_form_value('nome')
-        descricao = get_form_value('descricao')
-        marca = get_form_value('marca')
-        status = get_form_value('status')
-        qnt_total = get_form_value('qnt_total', cast_type=int) # Usando get_form_value com cast_type
+        print("\n--- DEBUG: RECEBIDA REQUISIÇÃO POST EM /admin/materiais/form ---")
+        print(f"ID do Material (da URL): {id_material}")
+        print(f"Dados recebidos do formulário: {request.form}")
+        
+        # Coleta os dados brutos do formulário
+        id_ginasio = request.form.get('id_ginasio')
+        nome = request.form.get('nome')
+        descricao = request.form.get('descricao')
+        marca = request.form.get('marca')
+        status = request.form.get('status')
+        qnt_total = request.form.get('qnt_total')
 
         if id_material: # Modo de edição
-            qnt_disponivel = get_form_value('qnt_disponivel', cast_type=int) # Usando get_form_value com cast_type
+            print(f"-> Entrando no modo de EDIÇÃO para o material ID: {id_material}")
+            qnt_disponivel = request.form.get('qnt_disponivel')
             sucesso = servico_admin.atualizar_material(id_material, nome, descricao, marca, status, qnt_total, qnt_disponivel)
-            if sucesso:
-                flash('Material atualizado com sucesso!', 'success')
-            else:
-                flash('Erro ao atualizar o material.', 'error')
         else: # Modo de criação
+            print("-> Entrando no modo de CRIAÇÃO de novo material.")
             sucesso = servico_admin.adicionar_material(id_ginasio, nome, descricao, marca, status, qnt_total)
-            if sucesso:
-                flash('Novo material adicionado com sucesso!', 'success')
+
+        print(f"-> Resultado da operação (sucesso): {sucesso}")
+        if sucesso:
+            flash('Operação com material realizada com sucesso!', 'success')
+            return redirect(url_for('admin_gerenciar_materiais'))
+        else:
+            flash('Erro ao processar o material.', 'error')
+            # Em caso de erro, redireciona de volta para o formulário para correção
+            if id_material:
+                return redirect(url_for('admin_form_material', id_material=id_material))
             else:
-                flash('Erro ao adicionar o material.', 'error')
+                return redirect(url_for('admin_form_material'))
 
-        return redirect(url_for('admin_gerenciar_materiais'))
+    # Lógica GET para exibir o formulário (sem alteração nos prints por enquanto)
+    material_existente = None
+    if id_material:
+        todos_materiais = servico_admin.listar_materiais()
+        material_existente = next((m for m in todos_materiais if m.get('id_material') == id_material), None)
 
+    lista_de_ginasios = servico_admin.listar_ginasios()
+    status_possiveis = ['bom', 'danificado', 'manutencao']
+    
     return render_template('admin_form_material.html', 
                            ginasios=lista_de_ginasios,
                            status_possiveis=status_possiveis,
                            material=material_existente)
+
 
 @app.route('/admin/ginasios', methods=['GET', 'POST'])
 def admin_gerenciar_ginasios():
@@ -790,73 +714,6 @@ def admin_gerenciar_eventos():
     lista_de_eventos = servico_admin.listar_eventos()
     return render_template('admin_gerenciar_eventos.html', eventos=lista_de_eventos)
 
-
-'''
-@app.route('/admin/eventos/novo', methods=['GET', 'POST'])
-def admin_form_evento():
-    # Proteção da rota
-    if session.get('usuario_logado', {}).get('tipo') != 'admin':
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('index'))
-    
-    if request.method == 'POST':
-        # Dados comuns do formulário
-        cpf_admin_organizador = request.form.get('cpf_admin_organizador')
-        nome_evento = request.form.get('nome')
-        desc_evento = request.form.get('descricao')
-        tipo_evento = request.form.get('tipo_evento')
-        lista_quadras = request.form.getlist('quadras_selecionadas')
-        
-        dados_tempo = {}
-        # Lógica para construir os dados de tempo CORRETAMENTE
-        if tipo_evento == 'extraordinario':
-            dados_tempo['inicio'] = request.form.get('data_hora_inicio')
-            dados_tempo['fim'] = request.form.get('data_hora_fim')
-        elif tipo_evento == 'recorrente':
-            dia_semana = request.form.get('dia_semana')
-            hora_inicio = request.form.get('hora_inicio_recorrente')
-            hora_fim = request.form.get('hora_fim_recorrente')
-            
-            # Mapeamento de dias
-            dias_pt = {
-                'Monday': 'Toda Segunda-feira', 'Tuesday': 'Toda Terça-feira',
-                'Wednesday': 'Toda Quarta-feira', 'Thursday': 'Toda Quinta-feira',
-                'Friday': 'Toda Sexta-feira', 'Saturday': 'Todo Sábado', 'Sunday': 'Todo Domingo'
-            }
-            dia_formatado = dias_pt.get(dia_semana, dia_semana)
-
-            # A string é construída AQUI, na rota.
-            dados_tempo['regra'] = f"{dia_formatado}, das {hora_inicio} às {hora_fim}"
-            dados_tempo['data_fim'] = request.form.get('data_fim_recorrencia')
-
-        sucesso = servico_admin.adicionar_evento(
-            cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras
-        )
-        
-        if sucesso:
-            flash('Novo evento criado com sucesso!', 'success')
-        else:
-            # Mensagem de erro mais específica
-            flash('Erro ao criar o evento. Verifique se os horários e quadras selecionados não conflitam com agendamentos já existentes.', 'error')
-        
-        # Redireciona para a lista de eventos ou de volta para o formulário
-        if sucesso:
-            return redirect(url_for('admin_gerenciar_eventos'))
-        else:
-            return redirect(url_for('admin_form_evento'))
-
-    # Lógica GET para exibir o formulário (permanece a mesma)
-    todas_as_quadras = servico_admin.listar_quadras_para_gerenciar()
-    todos_os_usuarios = servico_admin.listar_usuarios()
-    lista_de_admins = [u for u in todos_os_usuarios if u['tipo'] == 'Admin']
-    
-    return render_template('admin_form_evento.html', 
-                           quadras=todas_as_quadras,
-                           admins=lista_de_admins)
-'''
-
-
-
 @app.route('/admin/eventos/novo', methods=['GET', 'POST'])
 def admin_form_evento():
     # Proteção da rota
@@ -909,69 +766,6 @@ def admin_form_evento():
     return render_template('admin_form_evento.html', 
                            quadras=todas_as_quadras,
                            admins=lista_de_admins)
-
-
-'''
-@app.route('/novo_agendamento/<int:ginasio_id>/<int:quadra_id>')
-@app.route('/tabela_agendamento/<int:ginasio_id>/<int:quadra_id>')
-def tabela_agendamento(ginasio_id, quadra_id):
-    # 1. Lógica de navegação por semana (permanece a mesma)
-    semana_offset = request.args.get('semana', 0, type=int)
-    hoje = datetime.now() + timedelta(weeks=semana_offset)
-    segunda_feira = hoje - timedelta(days=hoje.weekday())
-    dias_da_semana = [segunda_feira.date() + timedelta(days=i) for i in range(7)]
-    
-    # Define o intervalo completo da semana para a query do banco
-    data_inicio_semana = dias_da_semana[0]
-    data_fim_semana = dias_da_semana[-1] + timedelta(days=1) # Adiciona 1 dia para incluir o último dia por completo
-
-    # 2. Busca de dados (AGORA COMBINADA)
-    # Instancia o DAO de Agendamento
-    from camada_dados.agendamento_dao import AgendamentoDAO
-    agendamento_dao = AgendamentoDAO()
-    
-    # Busca tanto agendamentos quanto eventos para a semana inteira de uma só vez
-    ocupacoes = agendamento_dao.buscar_agendamentos_por_quadra(ginasio_id, quadra_id, data_inicio_semana, data_fim_semana)
-
-    # 3. Processamento dos dados para a tabela
-    horarios = [f"{h:02d}:00" for h in range(7, 23)]
-    agendamentos_por_dia = {dia: {hora: None for hora in horarios} for dia in dias_da_semana}
-
-    for ocup in ocupacoes:
-        # Itera sobre cada hora que a ocupação (agendamento ou evento) cobre
-        hora_atual = ocup['hora_ini']
-        while hora_atual < ocup['hora_fim']:
-            data = hora_atual.date()
-            hora_str = f"{hora_atual.hour:02d}:00"
-            
-            # Verifica se a data e a hora estão na nossa grade de exibição
-            if data in agendamentos_por_dia and hora_str in agendamentos_por_dia[data]:
-                # Armazena o objeto de ocupação inteiro (que contém o tipo e o nome do evento, se houver)
-                agendamentos_por_dia[data][hora_str] = ocup
-            
-            hora_atual += timedelta(hours=1)
-
-    # 4. Busca de dados adicionais (permanece a mesma)
-    from camada_dados.agendamento_dao import get_ginasio_por_id
-    ginasio = get_ginasio_por_id(ginasio_id)
-    nome_ginasio = ginasio.nome if ginasio else f"Ginásio {ginasio_id}"
-    
-    from camada_dados.material_dao import MaterialDAO
-    material_dao = MaterialDAO()
-    # Supondo que você tenha um método buscar_por_ginasio no MaterialDAO
-    materiais_disponiveis = material_dao.buscar_todos() # Adaptado para buscar todos, filtre se necessário
-    
-    # 5. Renderização do template (permanece a mesma, passando os dados processados)
-    return render_template('tabela_agendamento.html', 
-                         ginasio_id=ginasio_id,
-                         quadra_id=quadra_id,
-                         dias=dias_da_semana,
-                         horarios=horarios,
-                         agendamentos_por_dia=agendamentos_por_dia,
-                         semana_offset=semana_offset,
-                         nome_ginasio=nome_ginasio,
-                         materiais_disponiveis=materiais_disponiveis)
-'''
 
 @app.route('/novo_agendamento/<int:ginasio_id>/<int:quadra_id>')
 @app.route('/tabela_agendamento/<int:ginasio_id>/<int:quadra_id>')

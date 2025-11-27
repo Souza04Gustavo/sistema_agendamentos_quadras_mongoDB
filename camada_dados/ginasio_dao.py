@@ -4,31 +4,6 @@ import psycopg2.extras
 from .mongo_config import conectar_mongo
 
 class GinasioDAO:
-    def buscar_todos(self):
-        """
-        Busca todos os ginásios cadastrados, ordenados por nome.
-        Retorna uma lista de dicionários.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return []
-        
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        ginasios = []
-        try:
-            query = "SELECT id_ginasio, nome, endereco, capacidade FROM ginasio ORDER BY nome"
-            cursor.execute(query)
-            resultados = cursor.fetchall()
-            for linha in resultados:
-                ginasios.append(dict(linha))
-            print(f"DEBUG[DAO]: {len(ginasios)} ginásios encontrados.")
-        except Exception as e:
-            print(f"Erro ao buscar todos os ginásios: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return ginasios
-
     def buscar_por_id(self, id_ginasio):
         """
         Busca um único ginásio pelo seu ID.
@@ -131,3 +106,25 @@ class GinasioDAO:
             cursor.close()
             conexao.close()
         return sucesso
+    
+    # --- Metodos migrados para o MongoDB ---
+    
+    def buscar_todos(self):
+        """
+        [MongoDB] Busca todos os ginásios na coleção 'ginasios'.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+        
+        ginasios = []
+        try:
+            # Busca todos os documentos na coleção e ordena por nome
+            resultados = db.ginasios.find({}).sort("nome", 1)
+            ginasios = list(resultados)
+        except Exception as e:
+            print(f"Erro ao buscar todos os ginásios no MongoDB: {e}")
+            
+        return ginasios
+    
+    

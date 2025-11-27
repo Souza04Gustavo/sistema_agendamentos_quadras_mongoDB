@@ -1,223 +1,154 @@
 # camada_dados/material_dao.py
 
-import psycopg2.extras
 from .mongo_config import conectar_mongo
+from bson import ObjectId
 
 class MaterialDAO:
+
+    # -- Metodos refatorados para o MongoDB --
+        
     def buscar_todos(self):
         """
-        Busca todos os materiais esportivos, juntando com o nome do ginásio.
-        Retorna uma lista de dicionários.
+        [MongoDB] Busca todos os materiais de todos os ginásios.
+        Desagrupa (unwind) os materiais embutidos para retornar uma lista plana.
         """
-        conexao = conectar_mongo()
-        if not conexao:
+        db = conectar_mongo()
+        if db is None:
             return []
         
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         materiais = []
         try:
-            query = """
-                SELECT 
-                    m.id_material, m.nome, m.descricao, m.marca, m.status,
-                    m.qnt_total, m.qnt_disponivel,
-                    g.id_ginasio, g.nome as nome_ginasio
-                FROM 
-                    material_esportivo m
-                JOIN 
-                    ginasio g ON m.id_ginasio = g.id_ginasio
-                ORDER BY
-                    g.nome, m.nome;
-            """
-            cursor.execute(query)
-            resultados = cursor.fetchall()
-            for linha in resultados:
-                materiais.append(dict(linha))
-            print(f"DEBUG[DAO]: {len(materiais)} materiais encontrados.")
+            # A 'agregação' é uma ferramenta poderosa do MongoDB.
+            # $unwind: "desmonta" o array de materiais, criando um documento para cada material.
+            # $project: formata o documento de saída.
+            pipeline = [
+                {"$unwind": "$materiais_esportivos"},
+                {"$project": {
+                    "_id": 0,
+                    "id_material": "$materiais_esportivos.id_material",
+                    "nome": "$materiais_esportivos.nome",
+                    "descricao": "$materiais_esportivos.descricao",
+                    "marca": "$materiais_esportivos.marca",
+                    "status": "$materiais_esportivos.status",
+                    "qnt_total": "$materiais_esportivos.qnt_total",
+                    "qnt_disponivel": "$materiais_esportivos.qnt_disponivel",
+                    "id_ginasio": "$_id",
+                    "nome_ginasio": "$nome"
+                }}
+            ]
+            resultados = db.ginasios.aggregate(pipeline)
+            materiais = list(resultados)
+            print(f"DEBUG[DAO-Mongo]: {len(materiais)} materiais encontrados em todos os ginásios.")
         except Exception as e:
-            print(f"Erro ao buscar todos os materiais: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao buscar todos os materiais no MongoDB: {e}")
+            
         return materiais
+
+    def buscar_por_ginasio(self, id_ginasio):
+        """
+        [MongoDB] Busca todos os materiais esportivos de um ginásio específico.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+            
+        try:
+            ginasio = db.ginasios.find_one({"_id": id_ginasio}, {"materiais_esportivos": 1})
+            if ginasio and 'materiais_esportivos' in ginasio:
+                return ginasio['materiais_esportivos']
+        except Exception as e:
+            print(f"Erro ao buscar materiais por ginásio no MongoDB: {e}")
+            
+        return []
 
     def criar(self, id_ginasio, nome, descricao, marca, status, qnt_total):
-        """
-        Insere um novo material esportivo no banco de dados.
-        A quantidade disponível será igual à total na criação.
-        Retorna True em caso de sucesso, False em caso de falha.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return False
+        db = conectar_mongo()
+        if db is None: return False
             
-        cursor = conexao.cursor()
-        sucesso = False
         try:
-            query = """
-                INSERT INTO material_esportivo 
-                    (id_ginasio, nome, descricao, marca, status, qnt_total, qnt_disponivel)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-            # qnt_disponivel é igual a qnt_total ao criar
-            cursor.execute(query, (id_ginasio, nome, descricao, marca, status, qnt_total, qnt_total))
-            conexao.commit()
-            sucesso = True
-            print(f"DEBUG[DAO]: Novo material '{nome}' criado com sucesso.")
+            # --- CORREÇÃO 1: Validação e conversão do id_ginasio ---
+            if not id_ginasio:
+                print("ERRO[DAO-Mongo]: ID do Ginásio não foi fornecido para a criação.")
+                return False
+            id_ginasio_int = int(id_ginasio)
+            # --- FIM CORREÇÃO ---
+
+            qnt_total_int = int(qnt_total) if qnt_total else 0
+            
+            novo_material = {
+                "id_material": str(ObjectId()),
+                "nome": nome, "descricao": descricao, "marca": marca, "status": status,
+                "qnt_total": qnt_total_int,
+                "qnt_disponivel": qnt_total_int
+            }
+            print(f"DEBUG[DAO-Mongo]: Tentando INSERIR o seguinte material no ginásio ID {id_ginasio_int}: {novo_material}")
+            
+            resultado = db.ginasios.update_one(
+                {"_id": id_ginasio_int},
+                {"$push": {"materiais_esportivos": novo_material}}
+            )
+            
+            print(f"DEBUG[DAO-Mongo]: Resultado da criação: Matched={resultado.matched_count}, Modified={resultado.modified_count}")
+            return resultado.modified_count > 0
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao criar material: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
+            print(f"ERRO[DAO-Mongo] ao criar material: {e}")
+            return False
 
     def atualizar(self, id_material, nome, descricao, marca, status, qnt_total, qnt_disponivel):
-        """
-        Atualiza os dados de um material esportivo existente.
-        Retorna True em caso de sucesso, False em caso de falha.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return False
+        db = conectar_mongo()
+        if db is None: return False
             
-        cursor = conexao.cursor()
-        sucesso = False
         try:
-            query = """
-                UPDATE material_esportivo SET
-                    nome = %s, descricao = %s, marca = %s, status = %s, 
-                    qnt_total = %s, qnt_disponivel = %s
-                WHERE id_material = %s
-            """
-            cursor.execute(query, (nome, descricao, marca, status, qnt_total, qnt_disponivel, id_material))
-            conexao.commit()
-            if cursor.rowcount > 0:
-                sucesso = True
-                print(f"DEBUG[DAO]: Material ID {id_material} atualizado.")
+            qnt_total_int = int(qnt_total) if qnt_total else 0
+            qnt_disponivel_int = int(qnt_disponivel) if qnt_disponivel else 0
+            
+            print(f"DEBUG[DAO-Mongo]: Tentando ATUALIZAR material ID {id_material}")
+            
+            # --- CORREÇÃO 2: Conversão de tipo no filtro ---
+            # Tenta encontrar o material tanto como string quanto como número para cobrir ambos os casos
+            resultado = db.ginasios.update_one(
+                {"$or": [
+                    {"materiais_esportivos.id_material": id_material},
+                    {"materiais_esportivos.id_material": int(id_material) if id_material.isdigit() else -1}
+                ]},
+                # --- FIM CORREÇÃO ---
+                {"$set": {
+                    "materiais_esportivos.$.nome": nome,
+                    "materiais_esportivos.$.descricao": descricao,
+                    "materiais_esportivos.$.marca": marca,
+                    "materiais_esportivos.$.status": status,
+                    "materiais_esportivos.$.qnt_total": qnt_total_int,
+                    "materiais_esportivos.$.qnt_disponivel": qnt_disponivel_int
+                }}
+            )
+            print(f"DEBUG[DAO-Mongo]: Resultado da atualização: Matched={resultado.matched_count}, Modified={resultado.modified_count}")
+            return resultado.modified_count > 0
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao atualizar material: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
+            print(f"ERRO[DAO-Mongo] ao atualizar material: {e}")
+            return False
 
     def excluir(self, id_material):
-        """
-        Exclui um material esportivo do banco.
-        Atenção: Pode falhar se o material estiver vinculado a um agendamento
-        devido à configuração ON DELETE RESTRICT.
-        Retorna True em caso de sucesso, False em caso de falha.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
+        db = conectar_mongo()
+        if db is None: return False
+            
+        try:
+            print(f"DEBUG[DAO-Mongo]: Tentando EXCLUIR material ID {id_material}")
+            
+            # --- CORREÇÃO 2: Conversão de tipo no filtro ---
+            # Tenta remover o material tanto como string quanto como número
+            resultado = db.ginasios.update_one(
+                {}, 
+                {"$pull": {"materiais_esportivos": {
+                    "$or": [
+                        {"id_material": id_material},
+                        {"id_material": int(id_material) if id_material.isdigit() else -1}
+                    ]
+                }}}
+            )
+            # --- FIM CORREÇÃO ---
+            print(f"DEBUG[DAO-Mongo]: Resultado da exclusão: Matched={resultado.matched_count}, Modified={resultado.modified_count}")
+            return resultado.modified_count > 0
+        except Exception as e:
+            print(f"ERRO[DAO-Mongo] ao excluir material: {e}")
             return False
-            
-        cursor = conexao.cursor()
-        sucesso = False
-        try:
-            query = "DELETE FROM material_esportivo WHERE id_material = %s"
-            cursor.execute(query, (id_material,))
-            conexao.commit()
-            if cursor.rowcount > 0:
-                sucesso = True
-                print(f"DEBUG[DAO]: Material ID {id_material} excluído.")
-        except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao excluir material: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
     
-    # No camada_dados/material_dao.py - adicionar este método
-
-    def buscar_por_ginasio(self, id_ginasio):
-        """
-        Busca todos os materiais disponíveis em um ginásio específico.
-        Retorna apenas materiais com status 'bom' e quantidade disponível > 0.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return []
-            
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        materiais = []
-        
-        try:
-            query = """
-                SELECT id_material, nome, descricao, marca, status, 
-                    qnt_total, qnt_disponivel
-                FROM material_esportivo 
-                WHERE id_ginasio = %s 
-                AND status = 'bom' 
-                AND qnt_disponivel > 0
-                ORDER BY nome
-            """
-            cursor.execute(query, (id_ginasio,))
-            resultados = cursor.fetchall()
-            
-            for linha in resultados:
-                materiais.append(dict(linha))
-                
-        except Exception as e:
-            print(f"Erro ao buscar materiais por ginásio: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-            
-        return materiais
-    
-    def buscar_por_ginasio(self, id_ginasio):
-        """
-        Busca todos os materiais esportivos de um ginásio específico.
-        Retorna uma lista de dicionários.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return []
-        
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        materiais = []
-        try:
-            query = """
-                SELECT * FROM material_esportivo 
-                WHERE id_ginasio = %s 
-                ORDER BY nome;
-            """
-            cursor.execute(query, (id_ginasio,))
-            for linha in cursor.fetchall():
-                materiais.append(dict(linha))
-        except Exception as e:
-            print(f"Erro ao buscar materiais por ginásio: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return materiais
-    
-    def buscar_por_ginasio(self, id_ginasio):
-        """
-        Busca todos os materiais esportivos de um ginásio específico.
-        Retorna uma lista de dicionários.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            return []
-        
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        materiais = []
-        try:
-            query = """
-                SELECT * FROM material_esportivo 
-                WHERE id_ginasio = %s 
-                ORDER BY nome;
-            """
-            cursor.execute(query, (id_ginasio,))
-            for linha in cursor.fetchall():
-                materiais.append(dict(linha))
-        except Exception as e:
-            print(f"Erro ao buscar materiais por ginásio: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return materiais

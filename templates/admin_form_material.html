@@ -21,7 +21,14 @@
         <div class="form-group">
             <label for="id_ginasio">Ginásio:</label>
             <select name="id_ginasio" id="id_ginasio" required {% if material %}disabled{% endif %}>
-                {% for g in ginasios %}<option value="{{ g.id }}" {% if material and g.id == material.id_ginasio %}selected{% endif %}>{{ g.nome }}</option>{% endfor %}
+                <option value="" disabled selected>-- Selecione um ginásio --</option>
+        
+                {% for g in ginasios %}
+                    <!-- A chave no Mongo é '_id', não 'id' -->
+                    <option value="{{ g._id }}" {% if material and g._id == material.id_ginasio %}selected{% endif %}>
+                        {{ g.nome }}
+                    </option>
+                {% endfor %}
             </select>
             {% if material %}<small>O ginásio de um material não pode ser alterado.</small>{% endif %}
         </div>

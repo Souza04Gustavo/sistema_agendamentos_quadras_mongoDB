@@ -1,12 +1,10 @@
 from camada_dados.mongo_config import conectar_mongo
 from modelos.usuario import Aluno, Funcionario, Admin, Servidor
 from datetime import datetime
-import psycopg2.extras
 
 class AlunoDao:
     def salvar(self, aluno: Aluno):
         return UsuarioDAO().salvar(aluno) 
-
 
 class UsuarioDAO:
     
@@ -294,37 +292,6 @@ class UsuarioDAO:
             print(f"Erro ao buscar usuário por CPF no MongoDB: {e}")
             return None
         
-    def buscar_todos_os_servidores(self):
-        """
-        [MongoDB] Busca todos os usuários que são servidores e retorna 
-        seus nomes e IDs de servidor.
-        """
-        db = conectar_mongo()
-        if db is None:
-            return []
-        
-        servidores = []
-        try:
-            # Filtro para encontrar documentos onde o campo 'tipo' seja 'servidor', 'admin' ou 'funcionario'.
-            filtro = {"tipo": {"$in": ["servidor", "admin", "funcionario"]}}
-            
-            # Projeção para retornar apenas os campos que nos interessam.
-            projecao = {"nome": 1, "detalhes_servidor.id_servidor": 1, "_id": 0}
-
-            cursor = db.usuarios.find(filtro, projecao)
-
-            for doc in cursor:
-                # O resultado será algo como: {'nome': 'Admin Geral', 'detalhes_servidor': {'id_servidor': 'SERV001'}}
-                servidores.append({
-                    "nome": doc.get('nome'),
-                    "id_servidor": doc.get('detalhes_servidor', {}).get('id_servidor')
-                })
-            
-            print(f"DEBUG[DAO-Mongo]: Encontrados {len(servidores)} servidores para supervisão.")
-            
-        except Exception as e:
-            print(f"Erro ao buscar servidores no MongoDB: {e}")
-            
-        return servidores
+    
     
     
