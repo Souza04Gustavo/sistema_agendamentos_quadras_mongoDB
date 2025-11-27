@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Selecionar Quadra{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .titulo-pagina { text-align: center; color: var(--cor-principal); margin-bottom: 20px; }
+    .lista-quadras { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; max-width: 800px; margin: auto; }
+    .item-quadra a {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: white;
+        border: 2px solid var(--cor-principal);
+        border-radius: 10px;
+        padding: 40px;
+        width: 150px;
+        height: 100px;
+        text-align: center;
+        text-decoration: none;
+        color: var(--cor-principal);
+        font-weight: bold;
+        font-size: 1.2rem;
+        transition: all 0.2s ease;
+    }
+    .item-quadra a:hover {
+        background-color: var(--cor-principal);
+        color: white;
+        transform: scale(1.05);
+    }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">Passo 2: Selecione a Quadra do Ginásio "{{ nome_ginasio }}"</h2>
+
+<div class="lista-quadras">
+    {% for q in quadras %}
+        <div class="item-quadra">
+            <a href="{{ url_for('tabela_agendamento', ginasio_id=gin, quadra_id=q.id) }}">
+                Quadra {{ q.numero }}
+            </a>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

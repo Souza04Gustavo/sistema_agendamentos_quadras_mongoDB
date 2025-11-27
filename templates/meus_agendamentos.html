@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Meus Agendamentos{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .card-principal {
+        background-color: white;
+        border-radius: 16px;
+        padding: 30px;
+        width: 90%;
+        max-width: 900px;
+        margin: auto;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .titulo-pagina {
+        text-align: center;
+        color: var(--cor-principal);
+        margin-bottom: 30px;
+        font-size: 1.8rem;
+    }
+    .secao {
+        margin-bottom: 40px;
+    }
+    .lista-agendamentos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+    }
+    .card-agendamento {
+        flex: 1 1 260px;
+        padding: 15px;
+        border-radius: 10px;
+        background: rgba(0, 74, 173, 0.08);
+        border-left: 5px solid;
+        transition: transform 0.2s ease;
+    }
+    .card-agendamento:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card-agendamento p {
+        margin: 5px 0;
+    }
+    .card-agendamento.pendente { border-color: #f7c948; }
+    .card-agendamento.concluido { border-color: #00a86b; }
+    .card-agendamento.cancelado { border-color: #e63946; }
+    .vazio {
+        color: #555;
+        font-style: italic;
+    }
+    .botao-voltar {
+        display: inline-block;
+        margin-top: 20px;
+        background-color: transparent;
+        color: var(--cor-principal);
+        text-decoration: none;
+        font-weight: bold;
+        border: 2px solid var(--cor-principal);
+        padding: 10px 20px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .botao-voltar:hover {
+        background-color: var(--cor-principal);
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="card-principal">
+    <h2 class="titulo-pagina">📅 Meus Agendamentos</h2>
+
+    <!-- Agendamentos Pendentes -->
+    <section class="secao">
+        <h3>Agendamentos Pendentes</h3>
+        {# A lógica do seu colega para verificar agendamentos estava um pouco diferente #}
+        {# Vamos adaptar para o que o DAO provavelmente retorna #}
+        {% set pendentes = agendamentos|selectattr('status_agendamento', 'equalto', 'confirmado')|list %}
+        {% if pendentes %}
+            <div class="lista-agendamentos">
+                {% for a in pendentes %}
+                <div class="card-agendamento pendente">
+                    <p><strong>Ginásio:</strong> {{ a.ginasio }}</p>
+                    <p><strong>Quadra:</strong> {{ a.quadra }}</p>
+                    <p><strong>Data:</strong> {{ a.hora_inicio.strftime('%d/%m/%Y') }}</p>
+                    <p><strong>Hora:</strong> {{ a.hora_inicio.strftime('%H:%M') }} - {{ a.hora_fim.strftime('%H:%M') }}</p>
+                    <p><strong>Status:</strong> {{ a.status_agendamento }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="vazio">Nenhum agendamento pendente.</p>
+        {% endif %}
+    </section>
+
+    <!-- Agendamentos Concluídos -->
+    <section class="secao">
+        <h3>Agendamentos Concluídos</h3>
+        {% set concluidos = agendamentos|selectattr('status_agendamento', 'equalto', 'realizado')|list %}
+        {% if concluidos %}
+            <div class="lista-agendamentos">
+                {% for a in concluidos %}
+                <div class="card-agendamento concluido">
+                    <p><strong>Ginásio:</strong> {{ a.ginasio }}</p>
+                    <p><strong>Quadra:</strong> {{ a.quadra }}</p>
+                    <p><strong>Data:</strong> {{ a.hora_inicio.strftime('%d/%m/%Y') }}</p>
+                    <p><strong>Hora:</strong> {{ a.hora_inicio.strftime('%H:%M') }} - {{ a.hora_fim.strftime('%H:%M') }}</p>
+                    <p><strong>Status:</strong> {{ a.status_agendamento }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="vazio">Nenhum agendamento concluído.</p>
+        {% endif %}
+    </section>
+
+    <!-- Agendamentos Cancelados -->
+    <section class="secao">
+        <h3>Agendamentos Cancelados</h3>
+        {% set cancelados = agendamentos|selectattr('status_agendamento', 'equalto', 'cancelado')|list %}
+        {% if cancelados %}
+            <div class="lista-agendamentos">
+                {% for a in cancelados %}
+                <div class="card-agendamento cancelado">
+                    <p><strong>Ginásio:</strong> {{ a.ginasio }}</p>
+                    <p><strong>Quadra:</strong> {{ a.quadra }}</p>
+                    <p><strong>Data:</strong> {{ a.hora_inicio.strftime('%d/%m/%Y') }}</p>
+                    <p><strong>Hora:</strong> {{ a.hora_inicio.strftime('%H:%M') }} - {{ a.hora_fim.strftime('%H:%M') }}</p>
+                    <p><strong>Status:</strong> {{ a.status_agendamento }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="vazio">Nenhum agendamento cancelado.</p>
+        {% endif %}
+    </section>
+
+    <a href="{{ url_for('index') }}" class="botao-voltar">← Voltar</a>
+</div>
+{% endblock %}

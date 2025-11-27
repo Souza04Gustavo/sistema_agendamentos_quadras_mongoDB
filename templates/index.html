@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Página Inicial{% endblock %}
+
+{% block extra_styles %}
+<style>
+    /* Estilos que são SÓ para a página inicial */
+    .conteudo-principal {
+        text-align: center;
+    }
+    .botoes {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+    }
+    .botao {
+        background-color: rgba(0, 86, 179, 0.15);
+        color: #0056b3;
+        text-decoration: none;
+        padding: 100px 40px;
+        border-radius: 10px;
+        font-weight: 600;
+        border: 2px solid #0056b3;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        min-width: 200px;
+    }
+    .botao:hover {
+        background-color: #0056b3;
+        color: white;
+        box-shadow: 0 0 10px rgba(0,86,179,0.4);
+    }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="conteudo-principal">
+    {% if usuario %}
+        <h2>Bem-vindo(a), {{ usuario.nome }}!</h2>
+        <p>Você está logado como <strong>{{ usuario.tipo }}</strong>.</p>
+        
+        {% if usuario.eh_bolsista %}
+            <p><strong>🎓 Você é um bolsista</strong> - Acesso a funcionalidades especiais</p>
+        {% endif %}
+
+        <div class="botoes">
+            <a href="{{ url_for('meus_agendamentos') }}" class="botao">📋 Meus Agendamentos</a>
+            <a href="{{ url_for('novo_agendamento') }}" class="botao">🕒 Novo Agendamento</a>
+            
+            {% if usuario.eh_bolsista %}
+                <a href="{{ url_for('painel_bolsista') }}" class="botao">🎓 Painel Bolsista</a>
+                <a href="{{ url_for('bolsista_relatorios') }}" class="botao">📊 Relatórios</a>
+                <a href="{{ url_for('bolsista_agendamentos') }}"class="botao">👨‍💼 Gerenciar agendamentos</a>
+            {% endif %}
+            
+            {% if usuario.tipo == 'admin' %}
+                <a href="{{ url_for('admin_gerenciar_quadras') }}" class="botao">🏟️ Gerenciar Quadras</a>
+                <a href="{{ url_for('admin_gerenciar_usuarios') }}" class="botao">👥 Gerenciar Usuários</a>
+                <a href="{{ url_for('admin_gerenciar_materiais') }}" class="botao">🏸 Gerenciar Materiais</a>
+                <a href="{{ url_for('admin_gerenciar_ginasios') }}" class="botao">🏛️ Gerenciar Ginásios</a>
+                <a href="{{ url_for('admin_ver_agendamentos') }}" class="botao">🗓️ Ver Agendamentos</a>
+                <a href="{{ url_for('admin_gerenciar_chamados') }}" class="botao">🔧 Gerenciar Chamados</a>
+                <a href="{{ url_for('admin_gerenciar_esportes') }}" class="botao">⚽ Gerenciar Esportes</a>
+                <a href="{{ url_for('admin_gerenciar_eventos') }}" class="botao">🎉 Gerenciar Eventos</a>
+            {% endif %}
+        </div>
+    {% else %}
+        <h2>Ocorreu um erro</h2>
+        <p>Por favor, faça <a href="{{ url_for('login') }}">login</a> novamente.</p>
+    {% endif %}
+</div>
+{% endblock %}

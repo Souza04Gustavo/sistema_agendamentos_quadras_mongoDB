@@ -1,0 +1,150 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Gerenciar Usuários{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .card-principal {
+        background-color: white;
+        border-radius: 12px;
+        padding: 30px;
+        width: 100%;
+        max-width: 1200px; /* Mais largo para a tabela */
+        margin: auto;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .titulo-pagina {
+        text-align: center;
+        color: var(--cor-principal);
+        margin-bottom: 30px;
+    }
+    .tabela-usuarios {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .tabela-usuarios th, .tabela-usuarios td {
+        border-bottom: 1px solid #ddd;
+        padding: 12px 15px;
+        text-align: left;
+    }
+    .tabela-usuarios th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+    }
+    .tabela-usuarios tr:nth-child(even) {
+        background-color: #fdfdfd;
+    }
+    .tabela-usuarios tr:hover {
+        background-color: #f1f1f1;
+    }
+    .status {
+        padding: 4px 8px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: white;
+        text-transform: uppercase;
+    }
+    .status.ativo { background-color: #28a745; }
+    .status.inativo { background-color: #dc3545; }
+
+    .btn-acao {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100px; /* Largura fixa para os botões */
+    }
+    .btn-ativar { background-color: #28a745; }
+    .btn-desativar { background-color: #dc3545; }
+    .btn-excluir { background-color: #dc3545; }
+
+    .btn {
+        padding: 8px 15px;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        text-decoration: none; /* Para garantir que o link se pareça com um botão */
+        display: inline-block; /* Para o link respeitar padding e margin */
+    }
+    .btn-salvar { background-color: var(--cor-principal);}
+    .btn-salvar:hover { background-color: var(--cor-secundaria);}
+
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="card-principal">
+    <h2 class="titulo-pagina">👥 Gerenciamento de Usuários</h2>
+    <a href="{{ url_for('admin_adicionar_usuario') }}" class="btn btn-salvar">Adicionar Novo Usuário</a>
+    <div style="overflow-x: auto;"> <!-- Para rolagem em telas pequenas -->
+        <table class="tabela-usuarios">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Email</th>
+                    <th>CPF</th>
+                    <th>Tipo</th>
+                    <th>Status</th>
+                    <th style="text-align: center;">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for usuario in usuarios %}
+                <tr>
+                    <td>{{ usuario.nome }}</td>
+                    <td>{{ usuario.email }}</td>
+                    <td>{{ usuario.cpf }}</td>
+                    <td>{{ usuario.tipo }}</td>
+                    <td>
+                        <span class="status {{ usuario.status }}">{{ usuario.status }}</span>
+                    </td>
+                    <td style="text-align: center;">
+                        <!-- Pequeno formulário para cada botão -->
+                        <form method="POST" style="display: inline-flex; align-items: center;">
+        
+                            <!-- ======================= INÍCIO DA CORREÇÃO ======================= -->
+                            
+                            <!-- ESTA LINHA ESTAVA FALTANDO -->
+                            <input type="hidden" name="acao" value="alterar_status">
+                            
+                            <!-- ======================== FIM DA CORREÇÃO ========================= -->
+
+                            <!-- Campos escondidos para enviar os dados do usuário -->
+                            <input type="hidden" name="cpf" value="{{ usuario.cpf }}">
+                            <input type="hidden" name="status_atual" value="{{ usuario.status }}">
+                            
+                            <!-- O botão muda dependendo do status atual -->
+                            {% if usuario.status == 'ativo' %}
+                                <button type="submit" class="btn-acao btn-desativar">Desativar</button>
+                            {% else %}
+                                <button type="submit" class="btn-acao btn-ativar">Ativar</button>
+                            {% endif %}
+                        </form>
+
+                        <form method="POST" style="display: inline-flex; margin-left: 10px;">
+                            <input type="hidden" name="acao" value="excluir">
+                            <input type="hidden" name="cpf" value="{{ usuario.cpf }}">
+                            <button type="submit" class="btn-acao btn-excluir" 
+                                    onclick="return confirm('Tem certeza que deseja EXCLUIR este usuário permanentemente? Esta ação não pode ser desfeita.');">
+                                Excluir
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 20px;">Nenhum usuário encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

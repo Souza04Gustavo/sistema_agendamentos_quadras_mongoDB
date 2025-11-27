@@ -1,0 +1,284 @@
+<!-- templates/bolsista_agendamentos.html -->
+
+{% extends "layout.html" %}
+
+{% block titulo %}Gerenciar Agendamentos - Bolsista{% endblock %}
+
+{% block conteudo %}
+<div class="card-principal">
+    <h2 style="text-align: center; color: var(--cor-principal); margin-bottom: 30px;">
+        📋 Gerenciamento de Agendamentos - Bolsista
+    </h2>
+
+    <!-- Agendamentos Ativos -->
+    <div class="secao-agendamentos">
+        <h3 style="color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 10px;">
+            ✅ Agendamentos Ativos ({{ agendamentos_ativos|length }})
+        </h3>
+        
+        {% if agendamentos_ativos %}
+        <div class="tabela-container">
+            <table class="tabela-gerenciamento">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Beneficiário</th>
+                        <th>Ginásio/Quadra</th>
+                        <th>Data/Hora</th>
+                        <th>Status</th>
+                        <th style="width: 200px;">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for agendamento in agendamentos_ativos %}
+                    <tr>
+                        <td>#{{ agendamento.id_agendamento }}</td>
+                        <td>
+                            <strong>{{ agendamento.nome_beneficiario }}</strong><br>
+                            <small>CPF: {{ agendamento.cpf_beneficiario }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.nome_ginasio }}<br>
+                            <small>Quadra {{ agendamento.num_quadra }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.hora_ini.strftime('%d/%m/%Y %H:%M') }}<br>
+                            <small>até {{ agendamento.hora_fim.strftime('%H:%M') }}</small>
+                        </td>
+                        <td>
+                            <span class="status-badge status-{{ agendamento.status_agendamento }}">
+                                {{ agendamento.status_agendamento }}
+                            </span>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                                <!-- Botão Concluir -->
+                                <form method="POST" action="{{ url_for('bolsista_concluir_agendamento', id_agendamento=agendamento.id_agendamento) }}" style="margin: 0;">
+                                    <button type="submit" class="btn btn-success" 
+                                            onclick="return confirm('Deseja marcar este agendamento como CONCLUÍDO?')">
+                                        ✅ Concluir
+                                    </button>
+                                </form>
+                                
+                                <!-- Botão Cancelar -->
+                                <form method="POST" action="{{ url_for('bolsista_cancelar_agendamento', id_agendamento=agendamento.id_agendamento) }}" style="margin: 0;">
+                                    <button type="submit" class="btn btn-danger" 
+                                            onclick="return confirm('Tem certeza que deseja CANCELAR este agendamento?')">
+                                        ❌ Cancelar
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 20px; color: #6c757d;">
+            <p>Nenhum agendamento ativo no momento.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Agendamentos Realizados -->
+    <div class="secao-agendamentos" style="margin-top: 40px;">
+        <h3 style="color: #17a2b8; border-bottom: 2px solid #17a2b8; padding-bottom: 10px;">
+            🏆 Agendamentos Concluídos ({{ agendamentos_realizados|length }})
+        </h3>
+        
+        {% if agendamentos_realizados %}
+        <div class="tabela-container">
+            <table class="tabela-gerenciamento">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Beneficiário</th>
+                        <th>Ginásio/Quadra</th>
+                        <th>Data/Hora</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for agendamento in agendamentos_realizados %}
+                    <tr>
+                        <td>#{{ agendamento.id_agendamento }}</td>
+                        <td>
+                            <strong>{{ agendamento.nome_beneficiario }}</strong><br>
+                            <small>CPF: {{ agendamento.cpf_beneficiario }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.nome_ginasio }}<br>
+                            <small>Quadra {{ agendamento.num_quadra }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.hora_ini.strftime('%d/%m/%Y %H:%M') }}<br>
+                            <small>até {{ agendamento.hora_fim.strftime('%H:%M') }}</small>
+                        </td>
+                        <td>
+                            <span class="status-badge status-realizado">
+                                {{ agendamento.status_agendamento }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 20px; color: #6c757d;">
+            <p>Nenhum agendamento concluído ainda.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Agendamentos Cancelados -->
+    <div class="secao-agendamentos" style="margin-top: 40px;">
+        <h3 style="color: #dc3545; border-bottom: 2px solid #dc3545; padding-bottom: 10px;">
+            🗑️ Agendamentos Cancelados ({{ agendamentos_cancelados|length }})
+        </h3>
+        
+        {% if agendamentos_cancelados %}
+        <div class="tabela-container">
+            <table class="tabela-gerenciamento">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Beneficiário</th>
+                        <th>Ginásio/Quadra</th>
+                        <th>Data/Hora</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for agendamento in agendamentos_cancelados %}
+                    <tr>
+                        <td>#{{ agendamento.id_agendamento }}</td>
+                        <td>
+                            <strong>{{ agendamento.nome_beneficiario }}</strong><br>
+                            <small>CPF: {{ agendamento.cpf_beneficiario }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.nome_ginasio }}<br>
+                            <small>Quadra {{ agendamento.num_quadra }}</small>
+                        </td>
+                        <td>
+                            {{ agendamento.hora_ini.strftime('%d/%m/%Y %H:%M') }}<br>
+                            <small>até {{ agendamento.hora_fim.strftime('%H:%M') }}</small>
+                        </td>
+                        <td>
+                            <span class="status-badge status-cancelado">
+                                {{ agendamento.status_agendamento }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 20px; color: #6c757d;">
+            <p>Nenhum agendamento cancelado.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.card-principal {
+    background-color: white;
+    border-radius: 12px;
+    padding: 30px;
+    max-width: 1200px;
+    margin: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.secao-agendamentos {
+    margin-bottom: 30px;
+}
+
+.tabela-container {
+    overflow-x: auto;
+    margin-top: 15px;
+}
+
+.tabela-gerenciamento {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.tabela-gerenciamento th, 
+.tabela-gerenciamento td {
+    border-bottom: 1px solid #ddd;
+    padding: 12px 15px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.tabela-gerenciamento th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+.status-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.status-confirmado {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-realizado {
+    background-color: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-cancelado {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.btn {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 0.9em;
+}
+
+.btn-success {
+    background-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #c82333;
+}
+
+.btn-info {
+    background-color: #17a2b8;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+}
+</style>
+{% endblock %}

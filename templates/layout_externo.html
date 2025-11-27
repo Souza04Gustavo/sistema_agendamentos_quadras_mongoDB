@@ -1,0 +1,26 @@
+<!-- templates/layout_externo.html -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo %}Sistema de Agendamento{% endblock %}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0057b8, #00aaff);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px 0; /* Adiciona um espaço no topo e no fundo */
+            color: #333;
+        }
+    </style>
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    {% block conteudo %}{% endblock %}
+</body>
+</html>

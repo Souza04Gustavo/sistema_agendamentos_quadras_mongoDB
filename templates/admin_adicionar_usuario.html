@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Adicionar Novo Usuário{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .card-form { background-color: white; border-radius: 12px; padding: 30px; max-width: 700px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    .btn-submit { background-color: var(--cor-principal); color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; }
+    
+    /* Classe para esconder os campos dinâmicos por padrão */
+    .campos-dinamicos {
+        display: none;
+        border-left: 3px solid var(--cor-principal);
+        padding-left: 15px;
+        margin-top: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="card-form">
+    <h2 style="text-align: center; color: var(--cor-principal);">Adicionar Novo Usuário</h2>
+    <form method="POST">
+        <!-- SELETOR DE TIPO - O GATILHO PARA O JAVASCRIPT -->
+        <div class="form-group">
+            <label for="tipo_usuario">Tipo de Usuário:</label>
+            <select name="tipo_usuario" id="tipo_usuario" required onchange="mostrarCampos()">
+                <option value="">-- Selecione um tipo --</option>
+                <option value="aluno">Aluno</option>
+                <option value="bolsista">Aluno Bolsista</option>
+                <option value="funcionario">Funcionário</option>
+                <option value="admin">Administrador</option>
+            </select>
+        </div>
+
+        <hr style="margin: 20px 0;">
+
+        <!-- CAMPOS COMUNS (SEMPRE VISÍVEIS) -->
+        <div id="campos-comuns" class="campos-dinamicos">
+            <h4>Dados Pessoais</h4>
+            <div class="form-group"><label for="cpf">CPF:</label><input type="text" name="cpf" id="cpf" required></div>
+            <div class="form-group"><label for="nome">Nome Completo:</label><input type="text" name="nome" id="nome" required></div>
+            <div class="form-group"><label for="email">Email:</label><input type="email" name="email" id="email" required></div>
+            <div class="form-group"><label for="senha">Senha:</label><input type="password" name="senha" id="senha" required></div>
+            <div class="form-group"><label for="data_nasc">Data de Nascimento:</label><input type="date" name="data_nasc" id="data_nasc" required></div>
+        </div>
+
+        <!-- CAMPOS DE ALUNO (E BOLSISTA) -->
+        <div id="campos-aluno" class="campos-dinamicos">
+            <h4>Dados Acadêmicos</h4>
+            <div class="form-group"><label for="matricula">Matrícula:</label><input type="text" name="matricula" id="matricula"></div>
+            <div class="form-group"><label for="curso">Curso:</label><input type="text" name="curso" id="curso"></div>
+            <div class="form-group"><label for="ano_inicio">Ano de Início:</label><input type="number" name="ano_inicio" id="ano_inicio"></div>
+        </div>
+
+        <!-- CAMPOS DE BOLSISTA -->
+        <div id="campos-bolsista" class="campos-dinamicos">
+            <h4>Dados de Bolsista</h4>
+            <div class="form-group"><label for="valor_remuneracao">Remuneração (R$):</label><input type="number" step="0.01" name="valor_remuneracao" id="valor_remuneracao"></div>
+            <div class="form-group"><label for="carga_horaria">Carga Horária Semanal:</label><input type="number" name="carga_horaria" id="carga_horaria"></div>
+            <div class="form-group"><label for="horario_inicio">Horário de Início:</label><input type="time" name="horario_inicio" id="horario_inicio"></div>
+            <div class="form-group"><label for="horario_fim">Horário de Fim:</label><input type="time" name="horario_fim" id="horario_fim"></div>
+            <div class="form-group">
+                <label for="id_supervisor_servidor">Supervisor:</label>
+                <select name="id_supervisor_servidor" id="id_supervisor_servidor">
+                    <option value="">-- Nenhum --</option>
+                    {% for supervisor in supervisores %}
+                        <option value="{{ supervisor.id_servidor }}">{{ supervisor.nome }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- CAMPOS DE SERVIDOR (FUNCIONÁRIO E ADMIN) -->
+        <div id="campos-servidor" class="campos-dinamicos">
+            <h4>Dados de Servidor</h4>
+            <div class="form-group"><label for="id_servidor">ID do Servidor:</label><input type="text" name="id_servidor" id="id_servidor"></div>
+            <div class="form-group"><label for="data_admissao">Data de Admissão:</label><input type="date" name="data_admissao" id="data_admissao"></div>
+        </div>
+
+        <!-- CAMPOS DE FUNCIONÁRIO -->
+        <div id="campos-funcionario" class="campos-dinamicos">
+            <h4>Dados de Funcionário</h4>
+            <div class="form-group"><label for="departamento">Departamento:</label><input type="text" name="departamento" id="departamento"></div>
+            <div class="form-group"><label for="cargo">Cargo:</label><input type="text" name="cargo" id="cargo"></div>
+        </div>
+
+        <!-- CAMPOS DE ADMIN -->
+        <div id="campos-admin" class="campos-dinamicos">
+            <h4>Dados de Administrador</h4>
+            <div class="form-group"><label for="nivel_acesso">Nível de Acesso:</label><input type="number" name="nivel_acesso" id="nivel_acesso" value="1"></div>
+            <div class="form-group"><label for="area_responsabilidade">Área de Responsabilidade:</label><input type="text" name="area_responsabilidade" id="area_responsabilidade"></div>
+        </div>
+
+        <br>
+        <button type="submit" class="btn-submit">Criar Usuário</button>
+    </form>
+</div>
+
+<script>
+    // Esta função é o coração da dinamicidade do formulário
+    function mostrarCampos() {
+        const tipo = document.getElementById('tipo_usuario').value;
+
+        // Primeiro, esconde todos os blocos de campos
+        document.querySelectorAll('.campos-dinamicos').forEach(div => {
+            div.style.display = 'none';
+        });
+
+        // Se nenhum tipo for selecionado, não faz mais nada
+        if (!tipo) return;
+
+        // Mostra sempre os campos comuns
+        document.getElementById('campos-comuns').style.display = 'block';
+
+        // Mostra os campos específicos com base no tipo selecionado
+        if (tipo === 'aluno' || tipo === 'bolsista') {
+            document.getElementById('campos-aluno').style.display = 'block';
+        }
+        if (tipo === 'bolsista') {
+            document.getElementById('campos-bolsista').style.display = 'block';
+        }
+        if (tipo === 'funcionario' || tipo === 'admin') {
+            document.getElementById('campos-servidor').style.display = 'block';
+        }
+        if (tipo === 'funcionario') {
+            document.getElementById('campos-funcionario').style.display = 'block';
+        }
+        if (tipo === 'admin') {
+            document.getElementById('campos-admin').style.display = 'block';
+        }
+    }
+</script>
+{% endblock %}

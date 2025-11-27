@@ -1,0 +1,126 @@
+/* Reset simples */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    background-color: #f5f5f5;
+    color: #333;
+    padding-bottom: 50px; /* espaço para o footer fixo */
+}
+
+header {
+    background-color: #004080;
+    color: white;
+    padding: 20px;
+    text-align: center;
+}
+
+header nav a {
+    color: white;
+    text-decoration: none;
+    margin: 0 10px;
+}
+
+header nav a:hover {
+    text-decoration: underline;
+}
+
+main {
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 10px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+ul {
+    list-style-type: none;
+}
+
+ul li {
+    margin: 10px 0;
+}
+
+ul li a {
+    text-decoration: none;
+    color: #004080;
+    font-weight: bold;
+}
+
+ul li a:hover {
+    text-decoration: underline;
+}
+
+.flashes {
+    margin-bottom: 20px;
+    padding: 10px;
+    border-radius: 6px;
+}
+
+.flashes li {
+    list-style-type: none;
+}
+
+.flashes li.success {
+    background-color: #d4edda;
+    color: #155724;
+    padding: 10px;
+    margin-bottom: 5px;
+}
+
+.flashes li.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 10px;
+    margin-bottom: 5px;
+}
+
+footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    color: white;
+    text-align: center;
+    padding: 10px 0;
+    font-size: 14px;
+    background-color: #004080;
+}
+
+.titulo-pagina {
+    color: #004080;
+    margin-bottom: 20px;
+    font-size: 24px;
+    text-align: center;
+}
+
+.lista-ginasios, .lista-quadras {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 20px;
+}
+
+.item-ginasio, .item-quadra {
+    background-color: #e6f0ff;
+    border: 1px solid #004080;
+    border-radius: 6px;
+    padding: 12px;
+    transition: background-color 0.3s;
+}
+
+.item-ginasio a, .item-quadra a {
+    text-decoration: none;
+    color: #004080;
+    font-weight: bold;
+}
+
+.item-ginasio:hover, .item-quadra:hover {
+    background-color: #cce0ff;
+}
+

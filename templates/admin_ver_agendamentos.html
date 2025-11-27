@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+{% block titulo %}Todos os Agendamentos{% endblock %}
+
+{% block extra_styles %}
+    <style>
+        .card-principal { background-color: white; border-radius: 12px; padding: 30px; max-width: 1200px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .titulo-pagina { text-align: center; color: var(--cor-principal); margin-bottom: 30px; }
+        .tabela-gerenciamento { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .tabela-gerenciamento th, .tabela-gerenciamento td { border-bottom: 1px solid #ddd; padding: 12px 15px; text-align: left; vertical-align: middle; }
+        .tabela-gerenciamento th { background-color: #f8f9fa; font-weight: 600; }
+        .status { padding: 4px 10px; border-radius: 15px; font-size: 0.8rem; font-weight: bold; color: white; text-transform: uppercase; display: inline-block; }
+        .status.confirmado { background-color: #007bff; }
+        .status.realizado { background-color: #28a745; }
+        .status.cancelado { background-color: #6c757d; }
+        .status.nao_compareceu { background-color: #ffc107; color: #333; }
+        .btn-cancelar { padding: 6px 12px; border: none; border-radius: 5px; color: white; cursor: pointer; font-weight: bold; background-color: #dc3545; }
+    </style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="card-principal">
+    <h2 class="titulo-pagina">🗓️ Visão Geral de Todos os Agendamentos</h2>
+    
+    <div style="overflow-x: auto;">
+        <table class="tabela-gerenciamento">
+            <thead>
+                <tr>
+                    <th>Usuário</th>
+                    <th>Ginásio</th>
+                    <th>Quadra</th>
+                    <th>Data e Hora</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for agendamento in agendamentos %}
+                <tr>
+                    <td>{{ agendamento.nome_usuario }}</td>
+                    <td>{{ agendamento.nome_ginasio }}</td>
+                    <td>Quadra {{ agendamento.num_quadra }}</td>
+                    <td>{{ agendamento.hora_ini.strftime('%d/%m/%Y às %H:%M') }}</td>
+                    <td>
+                        <span class="status {{ agendamento.status_agendamento }}">{{ agendamento.status_agendamento.replace('_', ' ')|title }}</span>
+                    </td>
+                    <td>
+                        {% if agendamento.status_agendamento in ['confirmado'] %}
+                            <form method="POST" style="display: inline-flex;">
+                                <input type="hidden" name="id_agendamento" value="{{ agendamento.id_agendamento }}">
+                                <button type="submit" class="btn-cancelar" 
+                                        onclick="return confirm('Tem certeza que deseja cancelar este agendamento?');">
+                                    Cancelar
+                                </button>
+                            </form>
+                        {% else %}
+                            <span>-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 20px;">Nenhum agendamento encontrado no sistema.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

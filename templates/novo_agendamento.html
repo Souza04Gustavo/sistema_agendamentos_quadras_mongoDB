@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Novo Agendamento{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .titulo-pagina { text-align: center; color: var(--cor-principal); margin-bottom: 20px; }
+    .lista-ginasios { display: flex; flex-direction: column; gap: 15px; max-width: 700px; margin: auto; }
+    .item-ginasio a {
+        display: block;
+        background-color: white;
+        border: 1px solid #ddd;
+        border-left: 5px solid var(--cor-principal);
+        border-radius: 8px;
+        padding: 20px;
+        text-decoration: none;
+        color: var(--cor-texto-escuro);
+        font-weight: bold;
+        transition: all 0.2s ease;
+    }
+    .item-ginasio a:hover {
+        transform: translateX(5px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        border-left-color: var(--cor-secundaria);
+    }
+</style>
+{% endblock %}
+
+{% block conteudo %}
+<h2 class="titulo-pagina">Passo 1: Selecione o Ginásio</h2>
+
+<div class="lista-ginasios">
+    {% for g in ginasios %}
+        <div class="item-ginasio">
+            <a href="{{ url_for('selecionar_quadra', ginasio_id=g.id) }}">
+                {{ g.nome }}
+                <small style="display: block; color: #555; font-weight: normal;">{{ g.endereco }}</small>
+            </a>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

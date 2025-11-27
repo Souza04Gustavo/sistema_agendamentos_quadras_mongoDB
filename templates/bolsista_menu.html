@@ -1,0 +1,8 @@
+{% extends 'layout.html' %}
+{% block titulo %}Área do Bolsista{% endblock %}
+{% block conteudo %}
+<h2>Bem-vindo, {{ session['nome'] }}</h2>
+<ul>
+  <li><a href="{{ url_for('relatorio_bolsista') }}">Gerar relatórios</a></li>
+</ul>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "layout.html" %}
+{% block titulo %}Associar Esportes à Quadra{% endblock %}
+
+{% block extra_styles %}
+    <style>
+        .card-form { background-color: white; border-radius: 12px; padding: 30px; max-width: 700px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .titulo-pagina { text-align: center; color: var(--cor-principal); }
+        .subtitulo-pagina { text-align: center; color: #555; margin-top: -15px; margin-bottom: 30px; }
+        .lista-checkbox { list-style-type: none; padding: 0; }
+        .lista-checkbox li { margin-bottom: 12px; font-size: 1.1rem; }
+        .lista-checkbox label { cursor: pointer; }
+        .lista-checkbox input[type="checkbox"] { margin-right: 10px; transform: scale(1.2); }
+        .btn-submit { background-color: var(--cor-principal); color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 1rem; width: 100%; margin-top: 20px; }
+    </style>
+{% endblock %}
+
+{% block conteudo %}
+<div class="card-form">
+    <h2 class="titulo-pagina">Associar Esportes</h2>
+    {% if quadra %}
+        <p class="subtitulo-pagina">Para a <strong>Quadra {{ quadra.num_quadra }}</strong> do <strong>{{ quadra.nome_ginasio }}</strong></p>
+    {% endif %}
+
+    <form method="POST">
+        <ul class="lista-checkbox">
+            {% for esporte in todos_esportes %}
+                <li>
+                    <label>
+                        <input type="checkbox" name="esportes_selecionados" value="{{ esporte.id_esporte }}"
+                               {% if esporte.id_esporte in esportes_associados_ids %}checked{% endif %}>
+                        {{ esporte.nome }}
+                    </label>
+                </li>
+            {% else %}
+                <li>Nenhum esporte cadastrado no sistema. <a href="{{ url_for('admin_form_esporte') }}">Adicionar Esporte</a></li>
+            {% endfor %}
+        </ul>
+        
+        <button type="submit" class="btn-submit">Salvar Associações</button>
+    </form>
+</div>
+{% endblock %}
