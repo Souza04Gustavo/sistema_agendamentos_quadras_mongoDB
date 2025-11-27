@@ -87,10 +87,6 @@ sistema_agendamentos_quadras/
 │   ├── quadra.py
 │   └── usuario.py          # Models: Classes Python que representam as tabelas
 │
-├── static/
-│   └── css/
-│       └── padrao.css      # Arquivos estáticos (CSS, JS futuro, imagens)
-│
 ├── templates/
 │   ├── layout.html         # Template base para a área logada
 │   ├── layout_externo.html # Template base para login/cadastro
