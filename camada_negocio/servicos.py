@@ -11,26 +11,6 @@ from camada_dados.evento_dao import EventoDAO
 from datetime import datetime, timedelta, time, date
 import re
 
-
-class ServicoCadastro:
-    '''
-    def __init__(self):
-        self.aluno_dao = AlunoDAO()
-
-    def cadastrar_aluno(self, aluno: Aluno):
-        """
-        Coordena o processo de cadastro de um novo aluno.
-        Aqui poderiam entrar regras de negócio, como validações.
-        """
-        # Exemplo de regra de negócio (simples):
-        if not aluno.cpf or not aluno.nome or not aluno.email:
-            print("Erro de negócio: Dados essenciais do aluno não foram preenchidos.")
-            return False
-        
-        # Se as regras passarem, chama a camada de dados para salvar.
-        return self.aluno_dao.salvar(aluno)
-    '''
-    
 class ServicoLogin:
     def __init__(self):
         self.usuario_dao = UsuarioDAO()
@@ -151,29 +131,27 @@ class ServicoAdmin:
                 'status': 'ativo' # Novos usuários sempre começam como ativos
             }
 
-            if tipo_usuario == 'aluno':
-                novo_usuario = Aluno(
+            # Unifica a lógica de Aluno e Bolsista
+            if tipo_usuario in ['aluno', 'bolsista']:
+                # Argumentos base para qualquer aluno
+                args_aluno = {
                     **dados_comuns,
-                    matricula=dados_formulario.get('matricula'),
-                    curso=dados_formulario.get('curso'),
-                    ano_inicio=dados_formulario.get('ano_inicio')
-                )
-            
-            # ATENÇÃO: A lógica para bolsista é uma extensão de aluno
-            elif tipo_usuario == 'bolsista':
-                novo_usuario = Aluno(
-                    **dados_comuns,
-                    matricula=dados_formulario.get('matricula'),
-                    curso=dados_formulario.get('curso'),
-                    ano_inicio=dados_formulario.get('ano_inicio'),
-                    # Campos específicos de bolsista
-                    categoria='bolsista',
-                    valor_remuneracao=dados_formulario.get('valor_remuneracao'),
-                    carga_horaria=dados_formulario.get('carga_horaria'),
-                    horario_inicio=dados_formulario.get('horario_inicio'),
-                    horario_fim=dados_formulario.get('horario_fim'),
-                    id_supervisor_servidor=dados_formulario.get('id_supervisor_servidor')
-                )
+                    'matricula': dados_formulario.get('matricula'),
+                    'curso': dados_formulario.get('curso'),
+                    'ano_inicio': dados_formulario.get('ano_inicio')
+                }
+                
+                # Se for um bolsista, adiciona os campos extras
+                if tipo_usuario == 'bolsista':
+                    args_aluno['categoria'] = 'bolsista'
+                    args_aluno['valor_remuneracao'] = dados_formulario.get('valor_remuneracao')
+                    args_aluno['carga_horaria'] = dados_formulario.get('carga_horaria')
+                    args_aluno['horario_inicio'] = dados_formulario.get('horario_inicio')
+                    args_aluno['horario_fim'] = dados_formulario.get('horario_fim')
+                    args_aluno['id_supervisor_servidor'] = dados_formulario.get('id_supervisor_servidor')
+                
+                # Cria o objeto Aluno com os argumentos corretos
+                novo_usuario = Aluno(**args_aluno)
             
             elif tipo_usuario == 'funcionario':
                 novo_usuario = Funcionario(

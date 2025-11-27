@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from camada_dados.usuario_dao import UsuarioDAO
 from camada_dados.agendamento_dao  import AgendamentoDAO
 from modelos.usuario import Aluno, Funcionario, Admin, Servidor # Importe todas as classes necessárias
-from camada_negocio.servicos import ServicoCadastro, ServicoLogin, ServicoAdmin, ServicoBolsista
+from camada_negocio.servicos import ServicoLogin, ServicoAdmin, ServicoBolsista
 from camada_dados.agendamento_dao import buscar_agendamentos_por_usuario
 from camada_dados.agendamento_dao import buscar_agendamentos_por_quadra
 from camada_dados.agendamento_dao import buscar_quadras_por_ginasio
@@ -21,8 +21,6 @@ app.secret_key = os.urandom(24)  # Ou uma chave fixa para desenvolvimento
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)
 
-
-servico_cadastro = ServicoCadastro()
 servico_login = ServicoLogin()
 servico_admin = ServicoAdmin()
 servico_bolsista = ServicoBolsista()
@@ -433,6 +431,8 @@ def admin_adicionar_quadra():
     lista_de_ginasios = buscar_ginasios()
     return render_template('admin_adicionar_quadra.html', ginasios=lista_de_ginasios)
 
+
+'''
 # --- ROTA DE ADIÇÃO DE USUÁRIO (MODIFICADA) ---
 @app.route('/admin/usuarios/novo', methods=['GET', 'POST'])
 def admin_adicionar_usuario():
@@ -517,6 +517,40 @@ def admin_adicionar_usuario():
 
     # Renderiza o template, passando a lista de supervisores
     return render_template('admin_adicionar_usuario.html', supervisores=supervisores)
+'''
+
+
+
+@app.route('/admin/usuarios/novo', methods=['GET', 'POST'])
+def admin_adicionar_usuario():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    # Lógica POST para processar o formulário
+    if request.method == 'POST':
+        # 1. Coleta TODOS os dados do formulário em um único dicionário
+        dados_do_formulario = request.form.to_dict()
+        
+        # 2. Delega TODA a lógica para a camada de serviço
+        sucesso = servico_admin.criar_novo_usuario(dados_do_formulario)
+        
+        # 3. Dá o feedback com base na resposta do serviço
+        if sucesso:
+            flash(f"Usuário do tipo '{dados_do_formulario.get('tipo_usuario')}' criado com sucesso!", 'success')
+            return redirect(url_for('admin_gerenciar_usuarios'))
+        else:
+            flash('Erro ao criar usuário. Verifique se o CPF ou Email já estão em uso.', 'error')
+            return redirect(url_for('admin_adicionar_usuario'))
+
+    # Lógica GET para exibir o formulário
+    # A única responsabilidade no GET é buscar os dados para os dropdowns
+    lista_de_supervisores = usuario_dao.buscar_todos_os_servidores()
+    return render_template('admin_adicionar_usuario.html', supervisores=lista_de_supervisores)
+
+
+
 
 @app.route('/admin/materiais', methods=['GET', 'POST'])
 def admin_gerenciar_materiais():
