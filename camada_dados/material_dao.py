@@ -1,7 +1,7 @@
 # camada_dados/material_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class MaterialDAO:
     def buscar_todos(self):
@@ -9,7 +9,7 @@ class MaterialDAO:
         Busca todos os materiais esportivos, juntando com o nome do ginásio.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -46,7 +46,7 @@ class MaterialDAO:
         A quantidade disponível será igual à total na criação.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -76,7 +76,7 @@ class MaterialDAO:
         Atualiza os dados de um material esportivo existente.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -109,7 +109,7 @@ class MaterialDAO:
         devido à configuração ON DELETE RESTRICT.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -137,7 +137,7 @@ class MaterialDAO:
         Busca todos os materiais disponíveis em um ginásio específico.
         Retorna apenas materiais com status 'bom' e quantidade disponível > 0.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
             
@@ -173,7 +173,7 @@ class MaterialDAO:
         Busca todos os materiais esportivos de um ginásio específico.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -200,7 +200,7 @@ class MaterialDAO:
         Busca todos os materiais esportivos de um ginásio específico.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         

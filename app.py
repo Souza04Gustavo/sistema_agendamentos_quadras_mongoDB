@@ -10,7 +10,7 @@ from camada_dados.agendamento_dao import buscar_quadras_por_ginasio
 from camada_dados.agendamento_dao import buscar_ginasios
 from camada_dados.agendamento_dao import get_ginasio_por_id
 from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento, verificar_usuario_existe
-from camada_dados.db_config import conectar_banco
+from camada_dados.mongo_config import conectar_mongo
 import re
 
 import os # Para a secret_key
@@ -1359,7 +1359,7 @@ def bolsista_debug_estrutura():
     verificar_estrutura_agendamento()
     
     # Também verificar alguns agendamentos de exemplo
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     cursor = conexao.cursor()
     cursor.execute("SELECT id_agendamento, cpf_usuario, id_bolsista_operador, status_agendamento FROM agendamento LIMIT 5")
     exemplos = cursor.fetchall()

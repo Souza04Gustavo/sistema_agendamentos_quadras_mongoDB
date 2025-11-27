@@ -1,7 +1,7 @@
 # camada_dados/chamado_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class ChamadoDAO:
     def buscar_todos(self):
@@ -10,7 +10,7 @@ class ChamadoDAO:
         do usuário que abriu, do ginásio e da quadra.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -52,7 +52,7 @@ class ChamadoDAO:
         ser resolvido.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             

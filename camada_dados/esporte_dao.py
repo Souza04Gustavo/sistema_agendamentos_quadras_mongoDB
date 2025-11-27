@@ -1,12 +1,12 @@
 # camada_dados/esporte_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class EsporteDAO:
     def buscar_todos(self):
         """Busca todos os esportes, ordenados por nome."""
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return []
         cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         esportes = []
@@ -23,7 +23,7 @@ class EsporteDAO:
 
     def buscar_por_id(self, id_esporte):
         """Busca um único esporte pelo seu ID."""
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return None
         cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         esporte = None
@@ -41,7 +41,7 @@ class EsporteDAO:
 
     def criar(self, nome, max_jogadores):
         """Insere um novo esporte no banco de dados."""
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return None
         cursor = conexao.cursor()
         novo_id = None
@@ -60,7 +60,7 @@ class EsporteDAO:
 
     def atualizar(self, id_esporte, nome, max_jogadores):
         """Atualiza os dados de um esporte existente."""
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return False
         cursor = conexao.cursor()
         sucesso = False
@@ -80,7 +80,7 @@ class EsporteDAO:
 
     def excluir(self, id_esporte):
         """Exclui um esporte do banco de dados."""
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return False
         cursor = conexao.cursor()
         sucesso = False

@@ -985,7 +985,7 @@ class ServicoBolsista:
     def _conectar_banco(self):
         """Método auxiliar para conexão com o banco"""
         try:
-            from camada_dados.db_config import conectar_banco
+            from camada_dados.mongo_config import conectar_banco
             return conectar_banco()
         except Exception as e:
             print(f"Erro ao conectar com banco: {e}")

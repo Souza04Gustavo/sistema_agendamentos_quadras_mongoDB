@@ -1,7 +1,7 @@
 # camada_dados/ginasio_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class GinasioDAO:
     def buscar_todos(self):
@@ -9,7 +9,7 @@ class GinasioDAO:
         Busca todos os ginásios cadastrados, ordenados por nome.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -34,7 +34,7 @@ class GinasioDAO:
         Busca um único ginásio pelo seu ID.
         Retorna um dicionário se encontrado, None caso contrário.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return None
             
@@ -58,7 +58,7 @@ class GinasioDAO:
         Insere um novo ginásio no banco de dados.
         Retorna o ID do novo ginásio em caso de sucesso, None caso contrário.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return None
             
@@ -84,7 +84,7 @@ class GinasioDAO:
         Atualiza os dados de um ginásio existente.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
         
@@ -111,7 +111,7 @@ class GinasioDAO:
         Atenção: A configuração ON DELETE CASCADE pode apagar dados relacionados.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             

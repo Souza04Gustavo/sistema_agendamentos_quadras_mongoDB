@@ -1,4 +1,4 @@
-from camada_dados.db_config import conectar_banco
+from camada_dados.mongo_config import conectar_mongo
 import psycopg2.extras
 from modelos.ginasio import Ginasio
 from modelos.quadra import Quadra
@@ -11,7 +11,7 @@ class AgendamentoDAO:
         Busca todos os agendamentos do sistema, juntando informações do usuário e do ginásio.
         Retorna uma lista de dicionários.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -57,7 +57,7 @@ class AgendamentoDAO:
             print(f"Erro: Status '{novo_status}' é inválido.")
             return False
 
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -86,7 +86,7 @@ class AgendamentoDAO:
         Retorna todos os agendamentos realizados por um determinado usuário.
         (Refatorado para ser um método de classe)
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
             
@@ -117,7 +117,7 @@ class AgendamentoDAO:
         Busca AGENDAMENTOS, EVENTOS EXTRAORDINÁRIOS e EVENTOS RECORRENTES
         para uma quadra específica dentro de um intervalo de datas.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
             
@@ -199,7 +199,7 @@ class AgendamentoDAO:
         a um dado intervalo de tempo para uma quadra específica.
         Retorna True se houver conflito, False caso contrário.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             # Se não puder conectar, assume que há um risco e previne a criação.
             return True 
@@ -251,7 +251,7 @@ class AgendamentoDAO:
         a um dado intervalo de tempo para uma quadra específica.
         Retorna True se houver conflito, False caso contrário.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return True 
             
@@ -313,7 +313,7 @@ def buscar_agendamentos_por_usuario(cpf_aluno):
     """
     Retorna todos os agendamentos realizados por um determinado aluno.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     cursor = conexao.cursor()
 
     query = """
@@ -346,7 +346,7 @@ def buscar_agendamentos_por_usuario(cpf_aluno):
 
 # ------------------- BUSCAR UM GINÁSIO POR ID -------------------
 def get_ginasio_por_id(id_ginasio):
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if conexao is None:
         return None
     cursor = conexao.cursor()
@@ -367,7 +367,7 @@ def get_ginasio_por_id(id_ginasio):
 #  BUSCAR GINÁSIOS
 # ==========================================================
 def buscar_ginasios():
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if conexao is None:
         return []
     cursor = conexao.cursor()
@@ -386,7 +386,7 @@ def buscar_ginasios():
 # ==========================================================
 
 def buscar_quadras_por_ginasio(id_ginasio):
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if conexao is None:
         return []
     cursor = conexao.cursor()
@@ -407,7 +407,7 @@ def buscar_agendamentos_por_quadra(id_ginasio, num_quadra, data):
     """
     Busca agendamentos para uma quadra específica em uma data.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return []
         
@@ -441,7 +441,7 @@ def inserir_agendamento(usuario_id, quadra_id, data, hora_inicio, hora_fim):
     Insere um novo agendamento no banco de dados.
     O status inicial será 'pendente'.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     cursor = conexao.cursor()
 
     query = """
@@ -465,7 +465,7 @@ def atualizar_status_agendamento(agendamento_id, novo_status):
     Atualiza o status de um agendamento (por exemplo, confirmado, cancelado, rejeitado).
     CORREÇÃO: usando id_agendamento em vez de id
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         print("DEBUG: Falha na conexão com o banco")
         return False
@@ -498,7 +498,7 @@ def excluir_agendamento(agendamento_id):
     """
     Exclui um agendamento do banco.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     cursor = conexao.cursor()
 
     query = "DELETE FROM agendamento WHERE id = %s;"
@@ -519,7 +519,7 @@ def buscar_agendamento_por_id(id_agendamento):
     Busca um agendamento específico pelo ID.
     Retorna um dicionário com os dados do agendamento ou None se não encontrado.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return None
         
@@ -570,7 +570,7 @@ def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
     """
     Verifica se a quadra está disponível no horário solicitado.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return False
         
@@ -616,7 +616,7 @@ def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_
     """
     Cria um novo agendamento no banco de dados.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         print("DEBUG: Falha na conexão com o banco")
         return False
@@ -659,7 +659,7 @@ def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_
     """
     Cria um novo agendamento no banco de dados.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return False
         
@@ -692,7 +692,7 @@ def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
     """
     Verifica se a quadra está disponível no horário solicitado.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return False
         
@@ -733,7 +733,7 @@ def verificar_usuario_existe(cpf):
     """
     Verifica se um usuário existe no sistema.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return False
         
@@ -754,7 +754,7 @@ def verificar_estrutura_tabela():
     """
     Verifica a estrutura da tabela agendamento
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return
         
@@ -782,7 +782,7 @@ def verificar_estrutura_agendamento():
     """
     Verifica a estrutura completa da tabela agendamento
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         return
         
@@ -810,7 +810,7 @@ def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_
     Cria um novo agendamento no banco de dados.
     Se motivo_evento for fornecido, é um agendamento de evento.
     """
-    conexao = conectar_banco()
+    conexao = conectar_mongo()
     if not conexao:
         print("DEBUG: Falha na conexão com o banco")
         return False

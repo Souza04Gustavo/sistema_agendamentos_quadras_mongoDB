@@ -1,14 +1,14 @@
 # camada_dados/evento_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class EventoDAO:
     def buscar_todos(self):
         """
         Busca todos os eventos (Extraordinários e Recorrentes) e suas informações.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return []
         cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         eventos = []
@@ -55,7 +55,7 @@ class EventoDAO:
         Cria um evento completo (Extraordinário ou Recorrente) usando uma transação.
         'dados_tempo' é um dicionário contendo os campos de tempo específicos.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return False
         cursor = conexao.cursor()
         try:
@@ -96,7 +96,7 @@ class EventoDAO:
         Exclui um evento. Graças ao ON DELETE CASCADE, os registros em
         'extraordinario' and 'evento_quadra' serão apagados automaticamente.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return False
         cursor = conexao.cursor()
         sucesso = False
@@ -120,7 +120,7 @@ class EventoDAO:
         Verifica se uma quadra específica está associada a um evento.
         Retorna True se a associação existir, False caso contrário.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False # Por segurança, se não conectar, não podemos confirmar
             
@@ -147,7 +147,7 @@ class EventoDAO:
         """
         Busca todos os eventos recorrentes associados a uma quadra específica.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return []
         cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         recorrentes = []

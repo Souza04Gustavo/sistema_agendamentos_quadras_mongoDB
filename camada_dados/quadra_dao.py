@@ -1,7 +1,7 @@
 # camada_dados/quadra_dao.py
 
 import psycopg2.extras
-from .db_config import conectar_banco
+from .mongo_config import conectar_mongo
 
 class QuadraDAO:
     def buscar_todas_as_quadras(self):
@@ -9,7 +9,7 @@ class QuadraDAO:
         Busca todas as quadras e junta com as informações do ginásio correspondente.
         Retorna uma lista de dicionários, um para cada quadra.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return []
         
@@ -52,7 +52,7 @@ class QuadraDAO:
             print(f"Erro: Status '{novo_status}' é inválido.")
             return False
             
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -80,7 +80,7 @@ class QuadraDAO:
         devido à configuração ON DELETE CASCADE.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -109,7 +109,7 @@ class QuadraDAO:
         Insere uma nova quadra no banco de dados.
         Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao:
             return False
             
@@ -141,7 +141,7 @@ class QuadraDAO:
         Busca todos os IDs de esportes associados a uma quadra específica.
         Retorna uma lista de IDs.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return []
         cursor = conexao.cursor()
         ids_esportes = []
@@ -164,7 +164,7 @@ class QuadraDAO:
         Esta operação é transacional: primeiro apaga todas as associações antigas
         e depois insere as novas.
         """
-        conexao = conectar_banco()
+        conexao = conectar_mongo()
         if not conexao: return False
         cursor = conexao.cursor()
         try:

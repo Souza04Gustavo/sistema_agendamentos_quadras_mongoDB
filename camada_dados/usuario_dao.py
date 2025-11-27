@@ -1,7 +1,6 @@
-from camada_dados.db_config import conectar_banco
+from camada_dados.mongo_config import conectar_mongo
 from modelos.usuario import Aluno, Funcionario, Admin
 import psycopg2.extras
-
 
 class AlunoDao:
     def salvar(self, aluno: Aluno):
@@ -112,89 +111,7 @@ class UsuarioDAO:
         finally:
             cursor.close()
             conexao.close()
-
-    def buscar_por_email(self, email):
-        """
-        Busca um usuário no banco de dados pelo seu email e reconstrói o objeto
-        completo (Aluno, Admin ou Funcionario).
-        """
-        conexao = conectar_banco()
-        if not conexao:
-            return None
-        
-        cursor = conexao.cursor()
-        try:
-            cursor.execute("SELECT * FROM usuario WHERE email = %s", (email,))
-            u = cursor.fetchone()
-            
-            if not u:
-                return None
-
-            # Desempacota a tupla 'u' em variáveis com nomes claros
-            cpf_usuario, nome_usuario, email_usuario, senha_usuario, data_nasc_usuario, status_usuario = u
-
-            # Tenta encontrar o tipo de usuário
-            cursor.execute("SELECT * FROM aluno WHERE cpf = %s", (cpf_usuario,))
-            aluno_data = cursor.fetchone()
-            if aluno_data:
-                # Chama o construtor passando cada argumento pelo seu nome (keyword arguments)
-                return Aluno(
-                    cpf=cpf_usuario,
-                    nome=nome_usuario,
-                    email=email_usuario,
-                    senha=senha_usuario,
-                    data_nasc=data_nasc_usuario,
-                    status=status_usuario,
-                    matricula=aluno_data[1],
-                    curso=aluno_data[2],
-                    ano_inicio=aluno_data[3],
-                    # Adicione os outros campos de aluno aqui se precisar deles no objeto
-                    categoria=aluno_data[4],
-                    valor_remuneracao=aluno_data[5],
-                    carga_horaria=aluno_data[6],
-                    horario_inicio=aluno_data[7],
-                    horario_fim=aluno_data[8],
-                    id_supervisor_servidor=aluno_data[9]
-                )
-
-            # A mesma lógica de correção se aplica para Admin e Funcionario
-            cursor.execute("SELECT id_servidor, data_admissao FROM servidor WHERE cpf = %s", (cpf_usuario,))
-            serv_data = cursor.fetchone()
-            if not serv_data:
-                return None
-            
-            id_servidor, data_admissao = serv_data
-
-            cursor.execute("SELECT * FROM admin WHERE cpf = %s", (cpf_usuario,))
-            admin_data = cursor.fetchone()
-            if admin_data:
-                return Admin(
-                    cpf=cpf_usuario, nome=nome_usuario, email=email_usuario, senha=senha_usuario,
-                    data_nasc=data_nasc_usuario, status=status_usuario,
-                    id_servidor=id_servidor, data_admissao=data_admissao,
-                    nivel_acesso=admin_data[1], area_responsabilidade=admin_data[2],
-                    data_ultimo_login=admin_data[3]
-                )
-
-            cursor.execute("SELECT * FROM funcionario WHERE cpf = %s", (cpf_usuario,))
-            func_data = cursor.fetchone()
-            if func_data:
-                return Funcionario(
-                    cpf=cpf_usuario, nome=nome_usuario, email=email_usuario, senha=senha_usuario,
-                    data_nasc=data_nasc_usuario, status=status_usuario,
-                    id_servidor=id_servidor, data_admissao=data_admissao,
-                    departamento=func_data[1], cargo=func_data[2]
-                )
-
-            return None
-
-        except Exception as e:
-            print(f"Erro ao buscar usuário por email: {e}")
-            return None
-        finally:
-            cursor.close()
-            conexao.close()
-            
+    
     def buscar_todos_os_usuarios(self):
         """
         Busca todos os usuários do sistema e determina o tipo de cada um.
@@ -353,3 +270,82 @@ class UsuarioDAO:
             conexao.close()
             
         return servidores
+    
+    
+    # --- METODOS ALTERADOS PARA MONGODB ---
+    def buscar_por_email(self, email):
+        """
+        [MongoDB] Busca um usuário na coleção 'usuarios' pelo seu email
+        e reconstrói o objeto de modelo Python correspondente.
+        """
+        db = conectar_mongo()
+        if not db:
+            return None
+        
+        try:
+            usuario_dict = db.usuarios.find_one({"email": email})
+
+            if not usuario_dict:
+                print(f"DEBUG[DAO-Mongo]: Nenhum usuário encontrado com o email: {email}")
+                return None
+
+            print(f"DEBUG[DAO-Mongo]: Usuário encontrado: {usuario_dict['nome']} (Tipo: {usuario_dict['tipo']})")
+            
+            tipo = usuario_dict.get('tipo')
+            
+            args_comuns = {
+                'cpf': usuario_dict['_id'],
+                'nome': usuario_dict['nome'],
+                'email': usuario_dict['email'],
+                'senha': usuario_dict['senha'],
+                'data_nasc': usuario_dict.get('data_nasc'),
+                'status': usuario_dict.get('status', 'ativo')
+            }
+
+            if tipo == 'aluno':
+                detalhes = usuario_dict.get('detalhes_aluno', {})
+                return Aluno(
+                    **args_comuns,
+                    matricula=detalhes.get('matricula'),
+                    curso=detalhes.get('curso'),
+                    ano_inicio=detalhes.get('ano_inicio'),
+                    categoria=detalhes.get('categoria'),
+                    valor_remuneracao=detalhes.get('valor_remuneracao'),
+                    carga_horaria=detalhes.get('carga_horaria'),
+                    horario_inicio=detalhes.get('horario_inicio'),
+                    horario_fim=detalhes.get('horario_fim'),
+                    id_supervisor_servidor=detalhes.get('id_supervisor_servidor')
+                )
+            
+            elif tipo in ['admin', 'funcionario', 'servidor']:
+                detalhes_servidor = usuario_dict.get('detalhes_servidor', {})
+                args_servidor = {
+                    **args_comuns,
+                    'id_servidor': detalhes_servidor.get('id_servidor'),
+                    'data_admissao': detalhes_servidor.get('data_admissao')
+                }
+                
+                if tipo == 'admin':
+                    detalhes_admin = usuario_dict.get('detalhes_admin', {})
+                    return Admin(
+                        **args_servidor,
+                        nivel_acesso=detalhes_admin.get('nivel_acesso'),
+                        area_responsabilidade=detalhes_admin.get('area_responsabilidade')
+                    )
+                
+                elif tipo == 'funcionario':
+                    detalhes_func = usuario_dict.get('detalhes_funcionario', {})
+                    return Funcionario(
+                        **args_servidor,
+                        departamento=detalhes_func.get('departamento'),
+                        cargo=detalhes_func.get('cargo')
+                    )
+                
+                else: # Se o tipo for 'servidor'
+                    return Servidor(**args_servidor)
+            
+            return None
+
+        except Exception as e:
+            print(f"Erro ao buscar usuário por email no MongoDB: {e}")
+            return None
