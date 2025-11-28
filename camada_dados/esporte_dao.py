@@ -1,99 +1,103 @@
 # camada_dados/esporte_dao.py
-
-import psycopg2.extras
 from .mongo_config import conectar_mongo
+from bson import ObjectId
 
 class EsporteDAO:
+    # --- Mongo DB metodos alterados ---
     def buscar_todos(self):
-        """Busca todos os esportes, ordenados por nome."""
-        conexao = conectar_mongo()
-        if not conexao: return []
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        """
+        [MongoDB] Busca todos os documentos da coleção 'esportes', ordenados por nome.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+        
         esportes = []
         try:
-            cursor.execute("SELECT id_esporte, nome, max_jogadores FROM esporte ORDER BY nome")
-            for linha in cursor.fetchall():
-                esportes.append(dict(linha))
+            # db.<colecao>.find({}).sort("campo", 1 para ascendente)
+            resultados = db.esportes.find({}).sort("nome", 1)
+            # É importante converter o cursor para uma lista
+            esportes = list(resultados)
+            print(f"DEBUG[DAO-Mongo]: {len(esportes)} esportes encontrados.")
         except Exception as e:
-            print(f"Erro ao buscar esportes: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao buscar esportes no MongoDB: {e}")
+            
         return esportes
 
     def buscar_por_id(self, id_esporte):
-        """Busca um único esporte pelo seu ID."""
-        conexao = conectar_mongo()
-        if not conexao: return None
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        esporte = None
+        """
+        [MongoDB] Busca um único esporte pelo seu _id.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return None
+            
         try:
-            cursor.execute("SELECT id_esporte, nome, max_jogadores FROM esporte WHERE id_esporte = %s", (id_esporte,))
-            resultado = cursor.fetchone()
-            if resultado:
-                esporte = dict(resultado)
+            # Converte a string do ID para um objeto ObjectId do MongoDB
+            obj_id = ObjectId(id_esporte)
+            esporte = db.esportes.find_one({"_id": obj_id})
+            return esporte
         except Exception as e:
-            print(f"Erro ao buscar esporte por ID: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return esporte
+            print(f"Erro ao buscar esporte por ID no MongoDB: {e}")
+            return None
 
     def criar(self, nome, max_jogadores):
-        """Insere um novo esporte no banco de dados."""
-        conexao = conectar_mongo()
-        if not conexao: return None
-        cursor = conexao.cursor()
-        novo_id = None
+        """
+        [MongoDB] Insere um novo esporte na coleção 'esportes'.
+        Retorna o ID do novo esporte se for bem-sucedido.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return None
+            
         try:
-            query = "INSERT INTO esporte (nome, max_jogadores) VALUES (%s, %s) RETURNING id_esporte"
-            cursor.execute(query, (nome, max_jogadores))
-            novo_id = cursor.fetchone()[0]
-            conexao.commit()
+            novo_esporte = {
+                "nome": nome,
+                "max_jogadores": int(max_jogadores) if max_jogadores else None
+            }
+            resultado = db.esportes.insert_one(novo_esporte)
+            print(f"DEBUG[DAO-Mongo]: Novo esporte '{nome}' criado com ID {resultado.inserted_id}.")
+            return resultado.inserted_id
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao criar esporte: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return novo_id
+            print(f"Erro ao criar esporte no MongoDB: {e}")
+            return None
 
     def atualizar(self, id_esporte, nome, max_jogadores):
-        """Atualiza os dados de um esporte existente."""
-        conexao = conectar_mongo()
-        if not conexao: return False
-        cursor = conexao.cursor()
-        sucesso = False
+        """
+        [MongoDB] Atualiza os dados de um esporte existente.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return False
+            
         try:
-            query = "UPDATE esporte SET nome = %s, max_jogadores = %s WHERE id_esporte = %s"
-            cursor.execute(query, (nome, max_jogadores, id_esporte))
-            conexao.commit()
-            if cursor.rowcount > 0:
-                sucesso = True
+            obj_id = ObjectId(id_esporte)
+            resultado = db.esportes.update_one(
+                {"_id": obj_id},
+                {"$set": {
+                    "nome": nome,
+                    "max_jogadores": int(max_jogadores) if max_jogadores else None
+                }}
+            )
+            return resultado.modified_count > 0
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao atualizar esporte: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
+            print(f"Erro ao atualizar esporte no MongoDB: {e}")
+            return False
 
     def excluir(self, id_esporte):
-        """Exclui um esporte do banco de dados."""
-        conexao = conectar_mongo()
-        if not conexao: return False
-        cursor = conexao.cursor()
-        sucesso = False
+        """
+        [MongoDB] Exclui um esporte da coleção.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return False
+            
         try:
-            query = "DELETE FROM esporte WHERE id_esporte = %s"
-            cursor.execute(query, (id_esporte,))
-            conexao.commit()
-            if cursor.rowcount > 0:
-                sucesso = True
+            obj_id = ObjectId(id_esporte)
+            resultado = db.esportes.delete_one({"_id": obj_id})
+            return resultado.deleted_count > 0
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao excluir esporte: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
+            print(f"Erro ao excluir esporte no MongoDB: {e}")
+            return False
+    
+    

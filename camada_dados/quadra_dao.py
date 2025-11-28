@@ -103,7 +103,6 @@ class QuadraDAO:
             conexao.close()
         return sucesso
     
-    
     def criar_quadra(self, id_ginasio, num_quadra, capacidade, tipo_piso, cobertura):
         """
         Insere uma nova quadra no banco de dados.
@@ -189,6 +188,6 @@ class QuadraDAO:
         finally:
             cursor.close()
             conexao.close()
-            
-            
+    
+    
         

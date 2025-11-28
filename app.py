@@ -22,10 +22,8 @@ servico_login = ServicoLogin()
 servico_admin = ServicoAdmin()
 servico_bolsista = ServicoBolsista()
 
-# Instância do DAO para uso direto nas rotas onde ele é necessário (como adicionar_usuario)
 usuario_dao = UsuarioDAO()
 
-# Função auxiliar para pegar valores do formulário e tratá-los (incluindo None para strings vazias)
 def get_form_value(key, default=None, cast_type=None):
     value = request.form.get(key)
     if value is None or value == '': # Trata None e string vazia
@@ -38,7 +36,6 @@ def get_form_value(key, default=None, cast_type=None):
             return default
     return value
 
-# Função auxiliar para verificar se é bolsista
 def eh_bolsista():
     """Verifica se o usuário logado é bolsista"""
     usuario_info = session.get('usuario_logado', {})
@@ -635,7 +632,7 @@ def admin_gerenciar_esportes():
 
 
 @app.route('/admin/esportes/form', defaults={'id_esporte': None}, methods=['GET', 'POST'])
-@app.route('/admin/esportes/form/<int:id_esporte>', methods=['GET', 'POST'])
+@app.route('/admin/esportes/form/<id_esporte>', methods=['GET', 'POST'])
 def admin_form_esporte(id_esporte):
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado.', 'error')
