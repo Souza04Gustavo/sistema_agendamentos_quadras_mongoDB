@@ -39,9 +39,9 @@
                     <td>{{ ginasio.endereco or 'Não informado' }}</td>
                     <td>{{ ginasio.capacidade or 'N/A' }}</td>
                     <td>
-                        <a href="{{ url_for('admin_form_ginasio', id_ginasio=ginasio.id_ginasio) }}" class="btn btn-editar">Editar</a>
+                        <a href="{{ url_for('admin_form_ginasio', id_ginasio=ginasio._id) }}" class="btn btn-editar">Editar</a>
                         <form method="POST" style="display: inline-flex; margin-left: 10px;">
-                            <input type="hidden" name="id_ginasio" value="{{ ginasio.id_ginasio }}">
+                            <input type="hidden" name="id_ginasio" value="{{ ginasio._id }}">
                             <button type="submit" class="btn btn-excluir" 
                                     onclick="return confirm('ATENÇÃO! Excluir um ginásio removerá PERMANENTEMENTE todas as suas quadras e agendamentos. Esta ação não pode ser desfeita. Deseja continuar?');">
                                 Excluir

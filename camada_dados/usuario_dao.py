@@ -153,8 +153,8 @@ class UsuarioDAO:
     
     def buscar_todos_os_usuarios(self):
         """
-        [MongoDB] Busca todos os documentos da coleção 'usuarios'.
-        Retorna uma lista de dicionários.
+        [MongoDB] Busca todos os documentos da coleção 'usuarios' e projeta
+        os campos necessários para a lista de gerenciamento e o dropdown de admins.
         """
         db = conectar_mongo()
         if db is None:
@@ -162,20 +162,19 @@ class UsuarioDAO:
         
         usuarios = []
         try:
-            # Comando Mongo: db.<colecao>.find({}) busca todos os documentos
-            # O segundo argumento ({...}) é a "projeção", define quais campos retornar.
-            # 1 = incluir, 0 = excluir.
+            # A projeção agora inclui o CPF (_id), que é necessário para o formulário.
+            # O campo 'tipo' também é crucial para a filtragem.
             cursor = db.usuarios.find(
                 {}, 
                 {"_id": 1, "nome": 1, "email": 1, "status": 1, "tipo": 1}
             )
 
             for usuario_dict in cursor:
-                # O _id no Mongo é o CPF, renomeamos para consistência com o template
+                # Renomeia '_id' para 'cpf' para manter a compatibilidade com o template
                 usuario_dict['cpf'] = usuario_dict.pop('_id')
                 usuarios.append(usuario_dict)
             
-            print(f"DEBUG[DAO-Mongo]: {len(usuarios)} usuários encontrados na coleção.")
+            print(f"DEBUG[DAO-Mongo]: {len(usuarios)} usuários encontrados para a lista de gerenciamento.")
             
         except Exception as e:
             print(f"Erro ao buscar todos os usuários no MongoDB: {e}")

@@ -26,8 +26,8 @@
             {% for esporte in todos_esportes %}
                 <li>
                     <label>
-                        <input type="checkbox" name="esportes_selecionados" value="{{ esporte.id_esporte }}"
-                               {% if esporte.id_esporte in esportes_associados_ids %}checked{% endif %}>
+                        <input type="checkbox" name="esportes_selecionados" value="{{ esporte._id }}"
+                       {% if esporte._id|string in esportes_associados_ids %}checked{% endif %}>
                         {{ esporte.nome }}
                     </label>
                 </li>

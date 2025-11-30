@@ -1,11 +1,11 @@
 from camada_dados.mongo_config import conectar_mongo
 import psycopg2.extras
+from bson import ObjectId
 from modelos.ginasio import Ginasio
 from modelos.quadra import Quadra
 
 class AgendamentoDAO:
-    # --- MÉTODOS NOVOS PARA O ADMINISTRADOR ---
-
+    '''
     def buscar_todos_os_agendamentos(self):
         """
         Busca todos os agendamentos do sistema, juntando informações do usuário e do ginásio.
@@ -78,8 +78,6 @@ class AgendamentoDAO:
             cursor.close()
             conexao.close()
         return sucesso
-
-    # --- MÉTODOS EXISTENTES (AGORA DENTRO DA CLASSE) ---
 
     def buscar_agendamentos_por_usuario(self, cpf_usuario):
         """
@@ -191,60 +189,6 @@ class AgendamentoDAO:
             conexao.close()
         return ocupacoes
     
-    
-    '''
-    def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
-        """
-        Verifica se existe qualquer agendamento ou evento extraordinário que se sobrepõe
-        a um dado intervalo de tempo para uma quadra específica.
-        Retorna True se houver conflito, False caso contrário.
-        """
-        conexao = conectar_mongo()
-        if not conexao:
-            # Se não puder conectar, assume que há um risco e previne a criação.
-            return True 
-            
-        cursor = conexao.cursor()
-        try:
-            query = """
-                -- Verifica conflitos com agendamentos
-                SELECT 1 FROM agendamento
-                WHERE id_ginasio = %s AND num_quadra = %s
-                AND status_agendamento != 'cancelado'
-                AND (hora_ini, hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
-                
-                UNION ALL
-
-                -- Verifica conflitos com eventos extraordinários
-                SELECT 1 FROM evento_quadra eq
-                JOIN extraordinario ex ON eq.id_evento = ex.id_evento
-                WHERE eq.id_ginasio = %s AND eq.num_quadra = %s
-                AND (ex.data_hora_inicio, ex.data_hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
-                
-                LIMIT 1; -- Otimização: para assim que encontrar o primeiro conflito.
-            """
-            parametros = (
-                id_ginasio, num_quadra, inicio, fim,
-                id_ginasio, num_quadra, inicio, fim
-            )
-            cursor.execute(query, parametros)
-            
-            # Se a query retornar qualquer linha, significa que há um conflito.
-            conflito_encontrado = cursor.fetchone() is not None
-            
-            if conflito_encontrado:
-                print(f"DEBUG[DAO]: Conflito de horário ENCONTRADO para a quadra {num_quadra} (Gin. {id_ginasio})")
-            
-            return conflito_encontrado
-            
-        except Exception as e:
-            print(f"Erro ao verificar conflito de horário: {e}")
-            return True # Em caso de erro, assume que há conflito por segurança.
-        finally:
-            cursor.close()
-            conexao.close()
-    '''
-    
     def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
         """
         Verifica se existe qualquer agendamento ou evento extraordinário que se sobrepõe
@@ -304,7 +248,65 @@ class AgendamentoDAO:
         finally:
             cursor.close()
             conexao.close()
+    '''
     
+    
+    # --- Metodos refatorados para o MongoDB ---
+    def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
+        """
+        [MongoDB] Verifica se existe qualquer agendamento ou evento extraordinário
+        que se sobrepõe a um dado intervalo de tempo para uma quadra específica.
+        Retorna True se houver conflito, False caso contrário.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return True # Assume conflito por segurança se não puder conectar
+
+        try:
+            # Filtro para encontrar conflitos em AGENDAMENTOS
+            filtro_agendamento = {
+                "id_ginasio": int(id_ginasio),
+                "num_quadra": int(num_quadra),
+                "status_agendamento": {"$ne": "cancelado"}, # Onde o status NÃO SEJA 'cancelado'
+                # Lógica de sobreposição de horários do MongoDB:
+                # Início do conflito < Fim do novo E Fim do conflito > Início do novo
+                "hora_ini": {"$lt": fim},
+                "hora_fim": {"$gt": inicio}
+            }
+            
+            # Busca se existe pelo menos UM agendamento que bate com o filtro
+            conflito_agendamento = db.agendamentos.find_one(filtro_agendamento)
+            
+            if conflito_agendamento:
+                print(f"DEBUG[DAO-Mongo]: Conflito ENCONTRADO com um agendamento existente.")
+                return True
+
+            # Filtro para encontrar conflitos em EVENTOS EXTRAORDINÁRIOS
+            filtro_evento = {
+                "tipo": "extraordinario",
+                "quadras_bloqueadas": {
+                    "$elemMatch": {"id_ginasio": int(id_ginasio), "num_quadra": int(num_quadra)}
+                },
+                "data_hora_inicio": {"$lt": fim},
+                "data_hora_fim": {"$gt": inicio}
+            }
+            
+            # Busca se existe pelo menos UM evento que bate com o filtro
+            conflito_evento = db.eventos.find_one(filtro_evento)
+
+            if conflito_evento:
+                print(f"DEBUG[DAO-Mongo]: Conflito ENCONTRADO com o evento extraordinário '{conflito_evento['nome']}'.")
+                return True
+
+            # Se não encontrou conflitos em nenhuma das coleções
+            print(f"DEBUG[DAO-Mongo]: Sem conflitos de horário encontrados para a quadra {num_quadra}.")
+            return False
+            
+        except Exception as e:
+            print(f"Erro ao verificar conflito de horário no MongoDB: {e}")
+            return True # Em caso de erro, assume conflito por segurança
+
+
 
 # ==========================================================
 #  BUSCAR AGENDAMENTOS POR USUÁRIO
@@ -359,9 +361,6 @@ def get_ginasio_por_id(id_ginasio):
         # Retorna um objeto Ginasio, não um dicionário
         return Ginasio(id_ginasio=row[0], nome=row[1], endereco=row[2], capacidade=row[3])
     return None
-
-
-
 
 # ==========================================================
 #  BUSCAR GINÁSIOS
@@ -608,85 +607,6 @@ def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
     finally:
         cursor.close()
         conexao.close()
-
-
-'''
-
-def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim):
-    """
-    Cria um novo agendamento no banco de dados.
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        print("DEBUG: Falha na conexão com o banco")
-        return False
-        
-    cursor = conexao.cursor()
-    try:
-        # Converter para timestamp completo
-        timestamp_ini = f"{data} {hora_ini}:00"
-        timestamp_fim = f"{data} {hora_fim}:00"
-        
-        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
-        
-        query = """
-            INSERT INTO agendamento 
-            (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
-            VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
-        """
-        cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
-        conexao.commit()
-        
-        print(f"DEBUG: Agendamento inserido - Linhas afetadas: {cursor.rowcount}")
-        
-        if cursor.rowcount > 0:
-            print("DEBUG: Agendamento criado com SUCESSO no banco")
-            return True
-        else:
-            print("DEBUG: Nenhuma linha afetada - agendamento NÃO criado")
-            return False
-            
-    except Exception as e:
-        print(f"DEBUG: Erro ao criar agendamento: {e}")
-        conexao.rollback()
-        return False
-    finally:
-        cursor.close()
-        conexao.close()
-
-
-def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim):
-    """
-    Cria um novo agendamento no banco de dados.
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        return False
-        
-    cursor = conexao.cursor()
-    try:
-        # Converter para timestamp completo
-        # Se data é '2024-01-15' e hora_ini é '10:00', fica '2024-01-15 10:00:00'
-        timestamp_ini = f"{data} {hora_ini}:00"
-        timestamp_fim = f"{data} {hora_fim}:00"
-        
-        query = """
-            INSERT INTO agendamento 
-            (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
-            VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
-        """
-        cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
-        conexao.commit()
-        print(f"DEBUG: Agendamento inserido com sucesso!")
-        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
-        return True
-    except Exception as e:
-        print(f"Erro ao criar agendamento: {e}")
-        conexao.rollback()
-        return False
-    finally:
-        cursor.close()
-        conexao.close() '''
 
 def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
     """

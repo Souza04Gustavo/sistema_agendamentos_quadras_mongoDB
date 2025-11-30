@@ -422,7 +422,7 @@ def admin_adicionar_quadra():
             flash('Erro ao adicionar a quadra. Verifique se o número da quadra já existe para este ginásio.', 'error')
             return redirect(url_for('admin_adicionar_quadra'))
 
-    lista_de_ginasios = buscar_ginasios()
+    lista_de_ginasios = servico_admin.listar_ginasios()
     return render_template('admin_adicionar_quadra.html', ginasios=lista_de_ginasios)
 
 
@@ -671,8 +671,9 @@ def admin_associar_esportes(id_ginasio, num_quadra):
         return redirect(url_for('index'))
 
     if request.method == 'POST':
+        # Pega a lista de strings do formulário
         ids_dos_esportes_selecionados = request.form.getlist('esportes_selecionados')
-        ids_dos_esportes_selecionados = [int(id) for id in ids_dos_esportes_selecionados]
+        ids_dos_esportes_selecionados = [id for id in ids_dos_esportes_selecionados if id]
         
         sucesso = servico_admin.salvar_associacao_esportes_quadra(id_ginasio, num_quadra, ids_dos_esportes_selecionados)
         
@@ -758,7 +759,7 @@ def admin_form_evento():
     # Lógica GET para exibir o formulário (sem alteração)
     todas_as_quadras = servico_admin.listar_quadras_para_gerenciar()
     todos_os_usuarios = servico_admin.listar_usuarios()
-    lista_de_admins = [u for u in todos_os_usuarios if u['tipo'] == 'Admin']
+    lista_de_admins = [u for u in todos_os_usuarios if u['tipo'] == 'admin']
     
     return render_template('admin_form_evento.html', 
                            quadras=todas_as_quadras,

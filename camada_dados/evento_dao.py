@@ -1,169 +1,186 @@
 # camada_dados/evento_dao.py
 
-import psycopg2.extras
 from .mongo_config import conectar_mongo
+from bson import ObjectId
+from datetime import datetime
 
 class EventoDAO:
+        
+    # --- Metodos do MongoDB ---
     def buscar_todos(self):
         """
-        Busca todos os eventos (Extraordinários e Recorrentes) e suas informações.
+        [MongoDB] Busca todos os documentos da coleção 'eventos'.
+        Cria campos de compatibilidade para o template.
         """
-        conexao = conectar_mongo()
-        if not conexao: return []
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        db = conectar_mongo()
+        if db is None:
+            return []
+        
         eventos = []
         try:
-            # Query corrigida com LEFT JOIN e COALESCE
-            query = """
-                SELECT 
-                    e.id_evento, 
-                    e.nome, 
-                    e.descricao,
-                    u.nome as nome_admin,
-                    -- Determina o tipo do evento para exibição
-                    CASE 
-                        WHEN ex.id_evento IS NOT NULL THEN 'Extraordinário'
-                        WHEN r.id_evento IS NOT NULL THEN 'Recorrente'
-                        ELSE 'Desconhecido'
-                    END as tipo_evento,
-                    -- Usa COALESCE para unificar as informações de tempo
-                    COALESCE(ex.data_hora_inicio, r.data_fim_recorrencia) as data_principal,
-                    COALESCE(ex.data_hora_fim::text, r.regra_recorrencia) as detalhe_tempo
-                FROM 
-                    evento e
-                LEFT JOIN 
-                    extraordinario ex ON e.id_evento = ex.id_evento
-                LEFT JOIN 
-                    recorrente r ON e.id_evento = r.id_evento
-                JOIN 
-                    usuario u ON e.cpf_admin_organizador = u.cpf
-                ORDER BY 
-                    data_principal DESC;
-            """
-            cursor.execute(query)
-            for linha in cursor.fetchall():
-                eventos.append(dict(linha))
+            resultados = db.eventos.find({}).sort([("data_hora_inicio", -1), ("data_fim_recorrencia", -1)])
+            eventos_brutos = list(resultados)
+            
+            # --- Lógica de Compatibilidade CORRIGIDA ---
+            for evento in eventos_brutos:
+                tipo = evento.get('tipo')
+                
+                # Cria a chave 'tipo_evento' que o template espera
+                if tipo == 'extraordinario':
+                    evento['tipo_evento'] = 'Extraordinário'
+                    evento['data_principal'] = evento.get('data_hora_inicio')
+                    evento['detalhe_tempo'] = evento.get('data_hora_fim')
+                elif tipo == 'recorrente':
+                    evento['tipo_evento'] = 'Recorrente'
+                    evento['data_principal'] = evento.get('data_fim_recorrencia')
+                    evento['detalhe_tempo'] = evento.get('regra_recorrencia')
+                else:
+                    evento['tipo_evento'] = 'Desconhecido'
+                    evento['data_principal'] = None
+                    evento['detalhe_tempo'] = None
+                
+                # Simula o nome do admin
+                evento['nome_admin'] = evento.get('admin_info', {}).get('nome', 'N/A')
+                
+                eventos.append(evento)
+
+            print(f"DEBUG[DAO-Mongo]: {len(eventos)} eventos encontrados e processados.")
+
         except Exception as e:
-            print(f"Erro ao buscar todos os eventos: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao buscar todos os eventos no MongoDB: {e}")
+            
         return eventos
+    
+    def excluir(self, id_evento):
+        """
+        [MongoDB] Exclui um evento da coleção 'eventos' pelo seu _id.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return False
+            
+        sucesso = False
+        try:
+            # Converte a string do ID para um objeto ObjectId
+            obj_id = ObjectId(id_evento)
+            
+            resultado = db.eventos.delete_one({"_id": obj_id})
+            
+            if resultado.deleted_count > 0:
+                sucesso = True
+                print(f"DEBUG[DAO-Mongo]: Evento ID {id_evento} excluído.")
+            else:
+                print(f"DEBUG[DAO-Mongo]: Nenhum evento com ID {id_evento} encontrado para excluir.")
+
+        except Exception as e:
+            print(f"Erro ao excluir evento no MongoDB: {e}")
+            
+        return sucesso
 
     def criar(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_ids):
         """
-        Cria um evento completo (Extraordinário ou Recorrente) usando uma transação.
-        'dados_tempo' é um dicionário contendo os campos de tempo específicos.
+        [MongoDB] Cria um novo documento de evento (Extraordinário ou Recorrente).
+        Retorna True em caso de sucesso, False em caso de falha.
         """
-        conexao = conectar_mongo()
-        if not conexao: return False
-        cursor = conexao.cursor()
-        try:
-            # 1. Inserir no evento principal
-            query_evento = "INSERT INTO evento (cpf_admin_organizador, nome, descricao) VALUES (%s, %s, %s) RETURNING id_evento"
-            cursor.execute(query_evento, (cpf_admin_organizador, nome_evento, desc_evento))
-            id_novo_evento = cursor.fetchone()[0]
-
-            # 2. Inserir na tabela de especialização correta
-            if tipo_evento == 'extraordinario':
-                query_especializacao = "INSERT INTO extraordinario (id_evento, data_hora_inicio, data_hora_fim) VALUES (%s, %s, %s)"
-                cursor.execute(query_especializacao, (id_novo_evento, dados_tempo['inicio'], dados_tempo['fim']))
-            elif tipo_evento == 'recorrente':
-                query_especializacao = "INSERT INTO recorrente (id_evento, regra_recorrencia, data_fim_recorrencia) VALUES (%s, %s, %s)"
-                cursor.execute(query_especializacao, (id_novo_evento, dados_tempo['regra'], dados_tempo['data_fim']))
-            else:
-                raise ValueError("Tipo de evento inválido")
-
-            # 3. Inserir na tabela de junção 'evento_quadra'
-            if lista_quadras_ids:
-                dados_para_inserir = [(id_novo_evento, id_gin, num_q) for id_gin, num_q in lista_quadras_ids]
-                query_evento_quadra = "INSERT INTO evento_quadra (id_evento, id_ginasio, num_quadra) VALUES (%s, %s, %s)"
-                cursor.executemany(query_evento_quadra, dados_para_inserir)
-
-            conexao.commit()
-            print(f"DEBUG[DAO]: Evento '{nome_evento}' (tipo: {tipo_evento}) criado com ID {id_novo_evento}.")
-            return True
-        except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao criar evento (transação falhou): {e}")
+        db = conectar_mongo()
+        if db is None:
             return False
-        finally:
-            cursor.close()
-            conexao.close()
-
-    def excluir(self, id_evento):
-        """
-        Exclui um evento. Graças ao ON DELETE CASCADE, os registros em
-        'extraordinario' and 'evento_quadra' serão apagados automaticamente.
-        """
-        conexao = conectar_mongo()
-        if not conexao: return False
-        cursor = conexao.cursor()
-        sucesso = False
+            
         try:
-            query = "DELETE FROM evento WHERE id_evento = %s"
-            cursor.execute(query, (id_evento,))
-            conexao.commit()
-            if cursor.rowcount > 0:
-                sucesso = True
+            # --- Etapa 1: Buscar informações embutidas ---
+            # Busca o nome do admin para embutir no documento
+            admin = db.usuarios.find_one({"_id": cpf_admin_organizador}, {"nome": 1})
+            nome_admin = admin.get('nome') if admin else 'Desconhecido'
+
+            # --- Etapa 2: Montar o documento base do evento ---
+            documento_evento = {
+                # _id será gerado automaticamente pelo MongoDB
+                "nome": nome_evento,
+                "descricao": desc_evento,
+                "cpf_admin_organizador": cpf_admin_organizador,
+                "admin_info": {
+                    "nome": nome_admin
+                },
+                "tipo": tipo_evento,
+                "quadras_bloqueadas": [
+                    {"id_ginasio": id_gin, "num_quadra": num_q} for id_gin, num_q in lista_quadras_ids
+                ]
+            }
+
+            # --- Etapa 3: Adicionar os campos de tempo específicos ---
+            if tipo_evento == 'extraordinario':
+                documento_evento['data_hora_inicio'] = datetime.fromisoformat(dados_tempo.get('inicio'))
+                documento_evento['data_hora_fim'] = datetime.fromisoformat(dados_tempo.get('fim'))
+            
+            elif tipo_evento == 'recorrente':
+                documento_evento['regra_recorrencia'] = dados_tempo.get('regra')
+                documento_evento['data_fim_recorrencia'] = datetime.combine(datetime.fromisoformat(dados_tempo.get('data_fim')), datetime.min.time())
+
+            # --- Etapa 4: Inserir o documento final ---
+            resultado = db.eventos.insert_one(documento_evento)
+            
+            if resultado.inserted_id:
+                print(f"DEBUG[DAO-Mongo]: Evento '{nome_evento}' criado com ID {resultado.inserted_id}.")
+                return True
+            else:
+                return False
+
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao excluir evento: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-        return sucesso
-    
-    
+            print(f"Erro ao criar evento no MongoDB: {e}")
+            return False
+        
     def quadra_pertence_a_evento(self, id_evento, id_ginasio, num_quadra):
         """
-        Verifica se uma quadra específica está associada a um evento.
-        Retorna True se a associação existir, False caso contrário.
+        [MongoDB] Verifica se uma quadra específica está no array 'quadras_bloqueadas' de um evento.
         """
-        conexao = conectar_mongo()
-        if not conexao:
-            return False # Por segurança, se não conectar, não podemos confirmar
+        db = conectar_mongo()
+        if db is None:
+            return False
             
-        cursor = conexao.cursor()
         try:
-            query = """
-                SELECT 1 FROM evento_quadra 
-                WHERE id_evento = %s AND id_ginasio = %s AND num_quadra = %s
-                LIMIT 1;
-            """
-            cursor.execute(query, (id_evento, id_ginasio, num_quadra))
+            obj_id_evento = ObjectId(id_evento)
             
-            # Se fetchone() retornar algo, a linha existe.
-            return cursor.fetchone() is not None
+            # Filtro para encontrar o evento E se a quadra está no array
+            filtro = {
+                "_id": obj_id_evento,
+                "quadras_bloqueadas": {
+                    "$elemMatch": {"id_ginasio": int(id_ginasio), "num_quadra": int(num_quadra)}
+                }
+            }
+            
+            # find_one retorna o documento se encontrar, ou None se não encontrar
+            encontrou = db.eventos.find_one(filtro)
+            
+            return encontrou is not None
             
         except Exception as e:
-            print(f"Erro ao verificar se quadra pertence a evento: {e}")
+            print(f"Erro ao verificar se quadra pertence a evento (MongoDB): {e}")
             return False
-        finally:
-            cursor.close()
-            conexao.close()
-            
+
     def buscar_recorrentes_por_quadra(self, id_ginasio, num_quadra):
         """
-        Busca todos os eventos recorrentes associados a uma quadra específica.
+        [MongoDB] Busca todos os eventos recorrentes associados a uma quadra específica.
         """
-        conexao = conectar_mongo()
-        if not conexao: return []
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        db = conectar_mongo()
+        if db is None:
+            return []
+        
         recorrentes = []
         try:
-            query = """
-                SELECT r.regra_recorrencia
-                FROM evento_quadra eq
-                JOIN recorrente r ON eq.id_evento = r.id_evento
-                WHERE eq.id_ginasio = %s AND eq.num_quadra = %s;
-            """
-            cursor.execute(query, (id_ginasio, num_quadra))
-            for linha in cursor.fetchall():
-                recorrentes.append(dict(linha))
+            # Filtro para encontrar eventos do tipo 'recorrente' E que contenham
+            # a quadra específica no seu array 'quadras_bloqueadas'.
+            filtro = {
+                "tipo": "recorrente",
+                "quadras_bloqueadas": {
+                    "$elemMatch": {"id_ginasio": int(id_ginasio), "num_quadra": int(num_quadra)}
+                }
+            }
+            
+            resultados = db.eventos.find(filtro)
+            recorrentes = list(resultados)
+
         except Exception as e:
-            print(f"Erro ao buscar eventos recorrentes por quadra: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao buscar eventos recorrentes por quadra (MongoDB): {e}")
+            
         return recorrentes
+    

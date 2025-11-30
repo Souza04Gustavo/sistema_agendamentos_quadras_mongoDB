@@ -32,14 +32,15 @@
                 {% for chamado in chamados %}
                 <tr>
                     <td>{{ chamado.data.strftime('%d/%m/%Y %H:%M') }}</td>
-                    <td>{{ chamado.nome_usuario_abriu }}</td>
-                    <td>{{ chamado.nome_ginasio }} - Quadra {{ chamado.num_quadra }}</td>
+                    <td>{{ chamado.usuario_info.nome }}</td>
+                    <td>{{ chamado.local_info.nome_ginasio }} - Quadra {{ chamado.num_quadra }}</td>
                     <td class="descricao-chamado">{{ chamado.descricao }}</td>
                     <td>
                         <form method="POST" style="display: inline-flex;">
-                            <input type="hidden" name="id_chamado" value="{{ chamado.id_cha }}">
+                            <!-- CORREÇÃO: Usa o _id do MongoDB -->
+                            <input type="hidden" name="id_chamado" value="{{ chamado._id }}">
                             <button type="submit" class="btn-resolver" 
-                                    onclick="return confirm('Tem certeza que deseja marcar este chamado como resolvido? Ele será removido da lista.');">
+                                    onclick="return confirm('Tem certeza que deseja marcar este chamado como resolvido?');">
                                 Marcar como Resolvido
                             </button>
                         </form>

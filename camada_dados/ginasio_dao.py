@@ -1,6 +1,4 @@
 # camada_dados/ginasio_dao.py
-
-import psycopg2.extras
 from .mongo_config import conectar_mongo
 
 class GinasioDAO:
@@ -161,7 +159,31 @@ class GinasioDAO:
         except Exception as e:
             print(f"Erro ao excluir quadra no MongoDB: {e}")
             return False
+        
+    def quadra_existe(self, id_ginasio, num_quadra):
+        """
+        [MongoDB] Verifica se uma quadra com um num_quadra específico já existe
+        dentro de um ginásio. Retorna True se existir, False caso contrário.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return True # Assume que existe por segurança se não puder conectar
 
+        try:
+            # Busca por um ginásio que tenha o _id E contenha a quadra no array
+            filtro = {
+                "_id": int(id_ginasio),
+                "quadras": {"$elemMatch": {"num_quadra": int(num_quadra)}}
+            }
+            resultado = db.ginasios.find_one(filtro)
+            
+            # Se find_one retornar um documento, a quadra já existe
+            return resultado is not None
+            
+        except Exception as e:
+            print(f"Erro ao verificar se quadra existe: {e}")
+            return True # Assume que existe por segurança em caso de erro
+        
     # --- MÉTODOS DE ASSOCIAÇÃO DE ESPORTES (AGORA DENTRO DE GINASIODAO) ---
     
     def buscar_esportes_da_quadra(self, id_ginasio, num_quadra):

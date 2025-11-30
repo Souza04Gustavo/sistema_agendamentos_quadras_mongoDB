@@ -80,7 +80,7 @@ class ServicoAdmin:
         Busca e retorna a lista de todas as quadras para o painel de gerenciamento.
         """
         print("DEBUG[Serviço]: Solicitando a lista de todas as quadras ao DAO.")
-        return self.quadra_dao.buscar_todas_as_quadras()
+        return self.ginasio_dao.buscar_todas_as_quadras()
 
     def alterar_status_quadra(self, id_ginasio, num_quadra, novo_status):
         """
@@ -98,10 +98,17 @@ class ServicoAdmin:
     
     def adicionar_nova_quadra(self, id_ginasio, num_quadra, capacidade, tipo_piso, cobertura):
         """
-        Repassa a solicitação de criação de uma nova quadra para o DAO.
+        Verifica se a quadra já existe antes de repassar a solicitação
+        de criação para o DAO.
         """
-        print(f"DEBUG[Serviço]: Adicionando nova quadra {num_quadra} ao Ginásio {id_ginasio}.")
-        return self.quadra_dao.criar_quadra(id_ginasio, num_quadra, capacidade, tipo_piso, cobertura)
+        print(f"DEBUG[Serviço]: Tentando adicionar nova quadra {num_quadra} ao Ginásio {id_ginasio}.")
+
+        if self.ginasio_dao.quadra_existe(id_ginasio, num_quadra):
+            print(f"ERRO[Serviço]: Tentativa de criar quadra duplicada (Nº {num_quadra}) no Ginásio {id_ginasio}.")
+            return False # Retorna falha se a quadra já existir
+
+        # Se a verificação passar, prossegue com a criação
+        return self.ginasio_dao.criar_quadra(id_ginasio, num_quadra, capacidade, tipo_piso, cobertura)
     
     def remover_usuario(self, cpf):
         """

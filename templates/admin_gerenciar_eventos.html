@@ -39,24 +39,24 @@
                     <td>{{ evento.nome }}</td>
                     <td>{{ evento.tipo_evento }}</td>
                     
-                    {# Formata a data se for um objeto de data/hora #}
-                    {% if evento.data_principal.strftime %}
+                    <!-- CORREÇÃO 1: Verifica se a variável existe, não se o método existe -->
+                    {% if evento.data_principal %}
                         <td>{{ evento.data_principal.strftime('%d/%m/%Y') }}</td>
                     {% else %}
-                        <td>{{ evento.data_principal }}</td>
+                        <td>N/A</td>
                     {% endif %}
 
-                    {# Mostra o horário de fim para extraordinário ou a regra para recorrente #}
-                    {% if evento.tipo_evento == 'Extraordinário' and evento.detalhe_tempo.strftime %}
+                    <!-- CORREÇÃO 2: Lógica simplificada e mais segura -->
+                    {% if evento.tipo_evento == 'Extraordinário' and evento.detalhe_tempo %}
                         <td>Fim: {{ evento.detalhe_tempo.strftime('%H:%M') }}</td>
                     {% else %}
-                        <td>{{ evento.detalhe_tempo }}</td>
+                        <td>{{ evento.detalhe_tempo or 'N/A' }}</td>
                     {% endif %}
 
                     <td>{{ evento.nome_admin }}</td>
                     <td>
                         <form method="POST" style="display: inline-flex;">
-                            <input type="hidden" name="id_evento" value="{{ evento.id_evento }}">
+                            <input type="hidden" name="id_evento" value="{{ evento._id }}">
                             <button type="submit" class="btn btn-excluir" 
                                     onclick="return confirm('Tem certeza que deseja excluir este evento?');">
                                 Excluir

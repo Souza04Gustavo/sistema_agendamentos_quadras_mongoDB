@@ -20,8 +20,9 @@
         <div class="form-group">
             <label for="id_ginasio">Ginásio:</label>
             <select name="id_ginasio" id="id_ginasio" required>
+                <option value="" disabled selected>-- Selecione um ginásio --</option>
                 {% for ginasio in ginasios %}
-                    <option value="{{ ginasio.id }}">{{ ginasio.nome }}</option>
+                    <option value="{{ ginasio._id }}">{{ ginasio.nome }}</option>
                 {% endfor %}
             </select>
         </div>

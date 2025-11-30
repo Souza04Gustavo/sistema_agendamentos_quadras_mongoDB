@@ -1,74 +1,53 @@
 # camada_dados/chamado_dao.py
 
-import psycopg2.extras
 from .mongo_config import conectar_mongo
+from bson import ObjectId
 
 class ChamadoDAO:
+    # --- metodos do MongoDB ---
     def buscar_todos(self):
         """
-        Busca todos os chamados de manutenção abertos, juntando informações
-        do usuário que abriu, do ginásio e da quadra.
-        Retorna uma lista de dicionários.
+        [MongoDB] Busca todos os documentos da coleção 'chamados'.
+        Os dados do usuário e local já estão embutidos (desnormalizados).
         """
-        conexao = conectar_mongo()
-        if not conexao:
+        db = conectar_mongo()
+        if db is None:
             return []
         
-        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
         chamados = []
         try:
-            query = """
-                SELECT 
-                    c.id_cha,
-                    c.data,
-                    c.descricao,
-                    c.num_quadra,
-                    g.nome as nome_ginasio,
-                    u.nome as nome_usuario_abriu
-                FROM 
-                    chamado_manutencao c
-                JOIN 
-                    usuario u ON c.cpf_usuario_abriu = u.cpf
-                JOIN 
-                    ginasio g ON c.id_ginasio = g.id_ginasio
-                ORDER BY
-                    c.data DESC;
-            """
-            cursor.execute(query)
-            resultados = cursor.fetchall()
-            for linha in resultados:
-                chamados.append(dict(linha))
-            print(f"DEBUG[DAO]: {len(chamados)} chamados de manutenção encontrados.")
+            # Busca todos os documentos e ordena pela data de criação, da mais nova para a mais antiga
+            resultados = db.chamados.find({}).sort("data", -1)
+            chamados = list(resultados)
+            print(f"DEBUG[DAO-Mongo]: {len(chamados)} chamados encontrados na coleção.")
         except Exception as e:
-            print(f"Erro ao buscar todos os chamados: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao buscar todos os chamados no MongoDB: {e}")
+            
         return chamados
 
     def excluir(self, id_chamado):
         """
-        Exclui um chamado de manutenção do banco de dados, geralmente após
-        ser resolvido.
-        Retorna True em caso de sucesso, False em caso de falha.
+        [MongoDB] Exclui um chamado da coleção 'chamados' pelo seu _id.
         """
-        conexao = conectar_mongo()
-        if not conexao:
+        db = conectar_mongo()
+        if db is None:
             return False
             
-        cursor = conexao.cursor()
         sucesso = False
         try:
-            query = "DELETE FROM chamado_manutencao WHERE id_cha = %s"
-            cursor.execute(query, (id_chamado,))
-            conexao.commit()
-            if cursor.rowcount > 0:
+            # Converte a string do ID para um objeto ObjectId do MongoDB
+            obj_id = ObjectId(id_chamado)
+            
+            # Comando Mongo: db.<colecao>.delete_one({filtro})
+            resultado = db.chamados.delete_one({"_id": obj_id})
+            
+            if resultado.deleted_count > 0:
                 sucesso = True
-                print(f"DEBUG[DAO]: Chamado ID {id_chamado} excluído com sucesso.")
+                print(f"DEBUG[DAO-Mongo]: Chamado ID {id_chamado} excluído com sucesso.")
+            else:
+                print(f"DEBUG[DAO-Mongo]: Nenhum chamado encontrado com o ID {id_chamado} para excluir.")
+
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao excluir chamado: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
+            print(f"Erro ao excluir chamado no MongoDB: {e}")
+            
         return sucesso
