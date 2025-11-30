@@ -1,11 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from camada_dados.usuario_dao import UsuarioDAO
 from camada_dados.agendamento_dao  import AgendamentoDAO
 from modelos.usuario import Aluno, Funcionario, Admin, Servidor
 from camada_negocio.servicos import ServicoLogin, ServicoAdmin, ServicoBolsista
 
-from camada_dados.agendamento_dao import buscar_quadras_por_ginasio, verificar_disponibilidade,get_ginasio_por_id,  criar_agendamento,buscar_agendamentos_por_quadra,  verificar_usuario_existe, buscar_ginasios, buscar_agendamentos_por_usuario
+from camada_dados.agendamento_dao import buscar_quadras_por_ginasio, verificar_disponibilidade,get_ginasio_por_id,  criar_agendamento,  verificar_usuario_existe, buscar_ginasios
 
 from camada_dados.mongo_config import conectar_mongo
 import re
@@ -48,7 +48,7 @@ def eh_bolsista():
     
     return (usuario_completo and 
             hasattr(usuario_completo, 'categoria') and 
-            usuario_completo.categoria == "Bolsista")
+            usuario_completo.categoria == "bolsista")
 
 
 @app.route('/')
@@ -79,7 +79,7 @@ def login():
             # Adicionar informação se é bolsista na sessão
             eh_bolsista_flag = False
             if hasattr(usuario, 'categoria'):
-                eh_bolsista_flag = (usuario.categoria == "Bolsista")
+                eh_bolsista_flag = (usuario.categoria == "bolsista")
             
             session['usuario_logado'] = {
                 'cpf': usuario.cpf,
@@ -163,9 +163,13 @@ def meus_agendamentos():
 
     usuario_info = session["usuario_logado"]
     usuario_id = usuario_info["cpf"]
-    agendamentos = buscar_agendamentos_por_usuario(usuario_id)
-
+    
+    # Instancia o DAO e chama o método da classe
+    dao = AgendamentoDAO()
+    agendamentos = dao.buscar_agendamentos_por_usuario(usuario_id)
+  
     return render_template("meus_agendamentos.html", agendamentos=agendamentos)
+
 
 @app.route('/novo_agendamento')
 def novo_agendamento():
@@ -774,12 +778,13 @@ def tabela_agendamento(ginasio_id, quadra_id):
     segunda_feira = hoje - timedelta(days=hoje.weekday())
     dias_da_semana = [segunda_feira.date() + timedelta(days=i) for i in range(7)]
     
-    data_inicio_semana = dias_da_semana[0]
-    data_fim_semana = dias_da_semana[-1] + timedelta(days=1)
+    data_inicio_semana_dt = datetime.combine(dias_da_semana[0], time.min)
+    # Fim: 00:00:00 do dia *após* o domingo (cobre o domingo inteiro até 23:59:59)
+    data_fim_semana_dt = datetime.combine(dias_da_semana[-1] + timedelta(days=1), time.min)
 
-    # 2. Busca de dados
+    # 2. Busca de dados combinada (agora com datetime)
     dao = AgendamentoDAO()
-    ocupacoes = dao.buscar_agendamentos_por_quadra(ginasio_id, quadra_id, data_inicio_semana, data_fim_semana)
+    ocupacoes = dao.buscar_agendamentos_por_quadra(ginasio_id, quadra_id, data_inicio_semana_dt, data_fim_semana_dt)
 
     # 3. Processamento dos dados
     horarios = [f"{h:02d}:00" for h in range(7, 23)]
@@ -797,33 +802,42 @@ def tabela_agendamento(ginasio_id, quadra_id):
             regra = ocup['regra_recorrencia']
             print(f"  -> É recorrente. Regra: '{regra}'")
             
-            match = re.search(r"Toda ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra)
+            match = re.search(r"Tod[oa] ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra)
             
             if match:
                 dia_evento_pt, hora_ini_str, hora_fim_str = match.groups()
-                dia_semana_en = next((key for key, val in dias_pt.items() if val == f"Toda {dia_evento_pt}"), None)
+                dia_semana_en = next((key for key, val in dias_pt.items() if dia_evento_pt in val), None)
                 
                 if dia_semana_en:
                     dia_semana_num = dias_map_num.get(dia_semana_en)
                     if dia_semana_num is not None:
+                        # Data em que o evento ocorreria nesta semana específica
                         data_do_evento_na_semana = dias_da_semana[dia_semana_num]
                         
-                        hora_ini_evento = int(hora_ini_str[:2])
-                        hora_fim_evento = int(hora_fim_str[:2])
+                        # ======================= INÍCIO DA CORREÇÃO FINAL =======================
                         
-                        # ======================= INÍCIO DA CORREÇÃO =======================
+                        # Data em que o documento do evento foi criado no MongoDB
+                        data_criacao_evento = ocup['_id'].generation_time.date()
                         
-                        # Se a hora final for 00, trate como 24 para o range funcionar
-                        if hora_fim_evento == 0:
-                            hora_fim_evento = 24
+                        # SÓ exibe o evento se a data da sua ocorrência nesta semana
+                        # for igual ou posterior à data em que ele foi criado.
+                        if data_do_evento_na_semana >= data_criacao_evento:
                         
-                        # ======================== FIM DA CORREÇÃO =========================
+                        # ======================== FIM DA CORREÇÃO FINAL =========================
                         
-                        for hora in range(hora_ini_evento, hora_fim_evento):
-                            hora_str_loop = f"{hora:02d}:00"
-                            if hora_str_loop in agendamentos_por_dia[data_do_evento_na_semana]:
-                                agendamentos_por_dia[data_do_evento_na_semana][hora_str_loop] = ocup
-                                print(f"    -> PREENCHIDO (Recorrente): {data_do_evento_na_semana} às {hora_str_loop}")
+                            hora_ini_evento = int(hora_ini_str[:2])
+                            hora_fim_evento = int(hora_fim_str[:2])
+                            if hora_fim_evento == 0: hora_fim_evento = 24
+                            
+                            for hora in range(hora_ini_evento, hora_fim_evento):
+                                hora_str_loop = f"{hora:02d}:00"
+                                if hora_str_loop in agendamentos_por_dia[data_do_evento_na_semana]:
+                                    # Para garantir que o nome seja exibido, criamos uma cópia
+                                    # e garantimos que a chave 'nome_evento' tenha o valor correto.
+                                    ocup_para_exibir = ocup.copy()
+                                    ocup_para_exibir['nome_evento'] = ocup.get('nome')
+                                    agendamentos_por_dia[data_do_evento_na_semana][hora_str_loop] = ocup_para_exibir
+
             else:
                 print("    -> ERRO: A regra de recorrência não correspondeu ao padrão esperado.")
 
@@ -844,6 +858,7 @@ def tabela_agendamento(ginasio_id, quadra_id):
                     agendamentos_por_dia[data][hora_str] = ocup
                     print(f"    -> PREENCHIDO: {data} às {hora_str}")
                 hora_atual += timedelta(hours=1)
+    
     print("--- FIM DEBUG ---")
 
     # 4. Busca de dados adicionais
@@ -1125,7 +1140,7 @@ def debug_bolsista():
     if 'usuario_logado' in session:
         usuario = session['usuario_logado']
         return f"""
-        <h2>Debug Bolsista</h2>
+        <h2>Debug bolsista</h2>
         <p>Usuário: {usuario}</p>
         <p>CPF: {usuario.get('cpf')}</p>
         <p>Nome: {usuario.get('nome')}</p>
@@ -1153,7 +1168,7 @@ def teste_form_bolsista():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Teste Form Bolsista</title>
+        <title>Teste Form bolsista</title>
     </head>
     <body>
         <h1>Teste Direto do Formulário</h1>

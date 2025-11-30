@@ -3,8 +3,11 @@ import psycopg2.extras
 from bson import ObjectId
 from modelos.ginasio import Ginasio
 from modelos.quadra import Quadra
+from datetime import datetime
 
 class AgendamentoDAO:
+    
+    # --- Metodos originais do PostgreSQL---
     '''
     def buscar_todos_os_agendamentos(self):
         """
@@ -250,7 +253,6 @@ class AgendamentoDAO:
             conexao.close()
     '''
     
-    
     # --- Metodos refatorados para o MongoDB ---
     def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
         """
@@ -306,135 +308,252 @@ class AgendamentoDAO:
             print(f"Erro ao verificar conflito de horário no MongoDB: {e}")
             return True # Em caso de erro, assume conflito por segurança
 
+    def buscar_todos_os_agendamentos(self):
+        """
+        [MongoDB] Busca todos os documentos da coleção 'agendamentos'.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+        
+        agendamentos = []
+        try:
+            # Busca todos os documentos e ordena pela hora de início (mais novos primeiro)
+            resultados = db.agendamentos.find({}).sort("hora_ini", -1)
+            
+            # Precisamos renomear/formatar algumas chaves para compatibilidade com o template
+            for doc in resultados:
+                doc['id_agendamento'] = doc.pop('_id') # Renomeia _id para id_agendamento
+                doc['nome_usuario'] = doc.get('usuario_info', {}).get('nome', 'N/A')
+                doc['nome_ginasio'] = doc.get('local_info', {}).get('nome_ginasio', 'N/A')
+                agendamentos.append(doc)
+
+            print(f"DEBUG[DAO-Mongo]: {len(agendamentos)} agendamentos totais encontrados.")
+
+        except Exception as e:
+            print(f"Erro ao buscar todos os agendamentos no MongoDB: {e}")
+            
+        return agendamentos
+    
+    def buscar_agendamentos_por_quadra(self, id_ginasio, num_quadra, data_inicio, data_fim):
+        """
+        [MongoDB] Busca tanto AGENDAMENTOS quanto EVENTOS para uma quadra específica
+        dentro de um intervalo de datas.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+            
+        ocupacoes = []
+        try:
+            # --- Busca Agendamentos ---
+            filtro_agendamento = {
+                "id_ginasio": int(id_ginasio),
+                "num_quadra": int(num_quadra),
+                "status_agendamento": {"$ne": "cancelado"},
+                "hora_ini": {"$lt": data_fim}, # Começa antes do fim do intervalo
+                "hora_fim": {"$gt": data_inicio} # Termina depois do início do intervalo
+            }
+            agendamentos = db.agendamentos.find(filtro_agendamento)
+            
+            for doc in agendamentos:
+                doc['tipo_ocupacao'] = 'agendamento'
+                doc['status'] = doc.get('status_agendamento')
+                ocupacoes.append(doc)
+            
+            # --- Busca Eventos Extraordinários ---
+            filtro_evento_extra = {
+                "tipo": "extraordinario",
+                "quadras_bloqueadas": {"$elemMatch": {"id_ginasio": int(id_ginasio), "num_quadra": int(num_quadra)}},
+                "data_hora_inicio": {"$lt": data_fim},
+                "data_hora_fim": {"$gt": data_inicio}
+            }
+            eventos_extra = db.eventos.find(filtro_evento_extra)
+            
+            for doc in eventos_extra:
+                doc['tipo_ocupacao'] = 'evento'
+                doc['status'] = 'bloqueado'
+                doc['hora_ini'] = doc.get('data_hora_inicio')
+                doc['hora_fim'] = doc.get('data_hora_fim')
+                doc['nome_evento'] = doc.get('nome')
+                ocupacoes.append(doc)
+
+            # --- Busca Eventos Recorrentes (lógica permanece em Python na rota) ---
+            # Adicionamos os recorrentes aqui para que a rota possa processá-los
+            filtro_evento_rec = {
+                "tipo": "recorrente",
+                "quadras_bloqueadas": {"$elemMatch": {"id_ginasio": int(id_ginasio), "num_quadra": int(num_quadra)}},
+                "data_fim_recorrencia": {"$gte": data_inicio}
+            }
+            eventos_rec = db.eventos.find(filtro_evento_rec)
+
+            for doc in eventos_rec:
+                 doc['tipo_ocupacao'] = 'evento'
+                 doc['status'] = 'recorrente'
+                 # A chave 'nome_evento' já existe como 'nome' no documento 'doc'.
+                 # Vamos apenas garantir que ela seja chamada de 'nome_evento' para o template.
+                 doc['nome_evento'] = doc.get('nome')
+                 ocupacoes.append(doc)
+                 
+            print(f"DEBUG[DAO-Mongo]: Encontradas {len(ocupacoes)} ocupações (agendamentos + eventos).")
+                
+        except Exception as e:
+            print(f"Erro ao buscar ocupações por quadra no MongoDB: {e}")
+            
+        return ocupacoes
+
+    def admin_atualizar_status(self, id_agendamento, novo_status):
+            """
+            [MongoDB] Permite que um administrador altere o status de qualquer agendamento.
+            Retorna True em caso de sucesso, False em caso de falha.
+            """
+            if novo_status not in ['confirmado', 'cancelado', 'realizado', 'nao_compareceu']:
+                print(f"Erro: Status '{novo_status}' é inválido.")
+                return False
+
+            db = conectar_mongo()
+            if db is None:
+                return False
+                
+            sucesso = False
+            try:
+                # Converte a string do ID para um objeto ObjectId do MongoDB
+                obj_id = ObjectId(id_agendamento)
+                
+                # Comando Mongo: db.<colecao>.update_one({filtro}, {operador_de_update})
+                resultado = db.agendamentos.update_one(
+                    {"_id": obj_id}, # Filtro para encontrar o agendamento pelo seu _id
+                    {"$set": {"status_agendamento": novo_status}} # Define o novo status
+                )
+                
+                if resultado.modified_count > 0:
+                    sucesso = True
+                    print(f"DEBUG[DAO-Mongo]: Status do agendamento ID {id_agendamento} atualizado para '{novo_status}'.")
+                else:
+                    print(f"DEBUG[DAO-Mongo]: Nenhum agendamento com ID {id_agendamento} foi encontrado para atualizar.")
+
+            except Exception as e:
+                print(f"Erro ao atualizar status do agendamento (admin) no MongoDB: {e}")
+                
+            return sucesso
+
+    def buscar_agendamentos_por_usuario(self, cpf_usuario):
+        """
+        [MongoDB] Retorna todos os agendamentos realizados por um determinado usuário.
+        """
+        db = conectar_mongo()
+        if db is None:
+            return []
+            
+        agendamentos = []
+        try:
+            # Filtra a coleção 'agendamentos' pelo CPF do usuário
+            filtro = {"cpf_usuario": cpf_usuario}
+            resultados = db.agendamentos.find(filtro).sort("hora_ini", -1)
+            
+            # Formata os dados para compatibilidade com o template
+            for doc in resultados:
+                doc['id_agendamento'] = doc.pop('_id')
+                doc['ginasio'] = doc.get('local_info', {}).get('nome_ginasio')
+                doc['quadra'] = doc.get('num_quadra')
+                # Adicione outras chaves que o seu template meus_agendamentos.html possa precisar
+                agendamentos.append(doc)
+
+        except Exception as e:
+            print(f"Erro ao buscar agendamentos por usuário no MongoDB: {e}")
+
+        return agendamentos
 
 
-# ==========================================================
-#  BUSCAR AGENDAMENTOS POR USUÁRIO
-# ==========================================================
-def buscar_agendamentos_por_usuario(cpf_aluno):
+# --- Funções Auxiliares criadas pelo José ---
+def get_ginasio_por_id(id_ginasio):  # --- Refatorada para o MongoDB
     """
-    Retorna todos os agendamentos realizados por um determinado aluno.
+    [MongoDB] Busca um único ginásio pelo seu _id.
+    Retorna um objeto Ginasio para manter a compatibilidade.
     """
-    conexao = conectar_mongo()
-    cursor = conexao.cursor()
-
-    query = """
-        SELECT a.id_agendamento, a.data_solicitacao, a.hora_ini, a.hora_fim, a.status_agendamento,
-               a.num_quadra, g.nome AS nome_ginasio
-        FROM agendamento a
-        JOIN ginasio g ON a.id_ginasio = g.id_ginasio
-        WHERE a.cpf_usuario = %s
-        ORDER BY a.data_solicitacao DESC, a.hora_ini;
-    """
-
-    cursor.execute(query, (cpf_aluno,))
-    resultados = cursor.fetchall()
-    cursor.close()
-    conexao.close()
-
-    agendamentos = []
-    for row in resultados:
-        agendamentos.append({
-            'id': row[0],
-            'data': row[1],
-            'hora_inicio': row[2],
-            'hora_fim': row[3],
-            'status_agendamento': row[4],
-            'quadra': row[5],
-            'ginasio': row[6]
-        })
-
-    return agendamentos
-
-# ------------------- BUSCAR UM GINÁSIO POR ID -------------------
-def get_ginasio_por_id(id_ginasio):
-    conexao = conectar_mongo()
-    if conexao is None:
+    db = conectar_mongo()
+    if db is None:
         return None
-    cursor = conexao.cursor()
-    query = "SELECT id_ginasio, nome, endereco, capacidade FROM ginasio WHERE id_ginasio = %s"
-    cursor.execute(query, (id_ginasio,))
-    row = cursor.fetchone()
-    cursor.close()
-    conexao.close()
-    if row:
-        # Retorna um objeto Ginasio, não um dicionário
-        return Ginasio(id_ginasio=row[0], nome=row[1], endereco=row[2], capacidade=row[3])
+        
+    try:
+        # Busca o documento na coleção 'ginasios' pelo _id (convertido para int)
+        doc = db.ginasios.find_one({"_id": int(id_ginasio)})
+        
+        if doc:
+            # Reconstrói o objeto Ginasio a partir do dicionário
+            return Ginasio(
+                id_ginasio=doc.get('_id'),
+                nome=doc.get('nome'),
+                endereco=doc.get('endereco'),
+                capacidade=doc.get('capacidade')
+            )
+    except Exception as e:
+        print(f"Erro ao buscar ginásio por ID no MongoDB: {e}")
+        
     return None
 
-# ==========================================================
-#  BUSCAR GINÁSIOS
-# ==========================================================
-def buscar_ginasios():
-    conexao = conectar_mongo()
-    if conexao is None:
-        return []
-    cursor = conexao.cursor()
-    query = "SELECT id_ginasio, nome, endereco, capacidade FROM ginasio ORDER BY nome"
-    cursor.execute(query)
-    rows = cursor.fetchall()
-    cursor.close()
-    conexao.close()
-    # Retorna lista de objetos Ginasio
-    ginasios = [Ginasio(id_ginasio=row[0], nome=row[1], endereco=row[2], capacidade=row[3]) for row in rows]
-    return ginasios
-
-
-# ==========================================================
-#  BUSCAR QUADRAS DE UM GINÁSIO
-# ==========================================================
-
-def buscar_quadras_por_ginasio(id_ginasio):
-    conexao = conectar_mongo()
-    if conexao is None:
-        return []
-    cursor = conexao.cursor()
-    query = "SELECT num_quadra, capacidade FROM quadra WHERE id_ginasio = %s ORDER BY num_quadra"
-    cursor.execute(query, (id_ginasio,))
-    rows = cursor.fetchall()
-    cursor.close()
-    conexao.close()
-
-    # Transformar cada linha em objeto Quadra
-    quadras = [Quadra(num_quadra=row[0], capacidade=row[1]) for row in rows]
-    return quadras
-
-# ==========================================================
-#  BUSCAR AGENDAMENTOS DE UMA QUADRA
-# ==========================================================
-def buscar_agendamentos_por_quadra(id_ginasio, num_quadra, data):
+def buscar_ginasios():  # --- Refatorada para o MongoDB
     """
-    Busca agendamentos para uma quadra específica em uma data.
+    [MongoDB] Busca todos os ginásios na coleção 'ginasios'.
+    Retorna uma lista de objetos Ginasio para manter a compatibilidade
+    com o código existente.
     """
-    conexao = conectar_mongo()
-    if not conexao:
+    db = conectar_mongo()
+    if db is None:
         return []
         
-    cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    agendamentos = []
+    ginasios_obj = []
     try:
-        query = """
-            SELECT * 
-            FROM agendamento
-            WHERE id_ginasio = %s AND num_quadra = %s 
-            AND DATE(hora_ini) = %s
-            AND status_agendamento != 'cancelado'
-            ORDER BY hora_ini
-        """
-        cursor.execute(query, (id_ginasio, num_quadra, data))
-        resultados = cursor.fetchall()
-        for row in resultados:
-            agendamentos.append(dict(row))
+        # Busca todos os documentos na coleção e ordena por nome
+        resultados = db.ginasios.find({}).sort("nome", 1)
+        
+        # Converte cada dicionário do Mongo em um objeto Ginasio
+        for doc in resultados:
+            ginasios_obj.append(
+                Ginasio(
+                    id_ginasio=doc.get('_id'),
+                    nome=doc.get('nome'),
+                    endereco=doc.get('endereco'),
+                    capacidade=doc.get('capacidade')
+                )
+            )
+        print(f"DEBUG[DAO-Mongo]: {len(ginasios_obj)} ginásios encontrados.")
     except Exception as e:
-        print(f"Erro ao buscar agendamentos por quadra: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
-    return agendamentos
+        print(f"Erro ao buscar ginásios no MongoDB: {e}")
+        
+    return ginasios_obj
 
-# ==========================================================
-#  INSERIR NOVO AGENDAMENTO
-# ==========================================================
+def buscar_quadras_por_ginasio(id_ginasio):  # --- Refatorada para o MongoDB
+    """
+    [MongoDB] Busca as quadras embutidas de um ginásio específico.
+    Retorna uma lista de objetos Quadra para manter a compatibilidade.
+    """
+    db = conectar_mongo()
+    if db is None:
+        return []
+
+    quadras_obj = []
+    try:
+        # Busca o documento do ginásio e projeta apenas o campo 'quadras'
+        ginasio_doc = db.ginasios.find_one(
+            {"_id": int(id_ginasio)},
+            {"quadras": 1, "_id": 0} 
+        )
+        
+        if ginasio_doc and 'quadras' in ginasio_doc:
+            # Para cada dicionário de quadra no array, cria um objeto Quadra
+            for quadra_dict in ginasio_doc['quadras']:
+                quadras_obj.append(
+                    Quadra(
+                        num_quadra=quadra_dict.get('num_quadra'),
+                        capacidade=quadra_dict.get('capacidade')
+                    )
+                )
+    except Exception as e:
+        print(f"Erro ao buscar quadras por ginásio no MongoDB: {e}")
+        
+    return quadras_obj
+
 def inserir_agendamento(usuario_id, quadra_id, data, hora_inicio, hora_fim):
     """
     Insere um novo agendamento no banco de dados.
@@ -453,11 +572,6 @@ def inserir_agendamento(usuario_id, quadra_id, data, hora_inicio, hora_fim):
     cursor.close()
     conexao.close()
     return True
-
-
-# ==========================================================
-#  ATUALIZAR STATUS DE AGENDAMENTO
-# ==========================================================
 
 def atualizar_status_agendamento(agendamento_id, novo_status):
     """
@@ -489,10 +603,6 @@ def atualizar_status_agendamento(agendamento_id, novo_status):
         cursor.close()
         conexao.close()
 
-
-# ==========================================================
-#  EXCLUIR AGENDAMENTO
-# ==========================================================
 def excluir_agendamento(agendamento_id):
     """
     Exclui um agendamento do banco.
@@ -507,11 +617,6 @@ def excluir_agendamento(agendamento_id):
     cursor.close()
     conexao.close()
     return True
-
-# ==========================================================
-#  BUSCAR AGENDAMENTO POR ID
-# ==========================================================
-# No agendamento_dao.py - verificar se já está correto
 
 def buscar_agendamento_por_id(id_agendamento):
     """
@@ -563,91 +668,30 @@ def buscar_agendamento_por_id(id_agendamento):
         cursor.close()
         conexao.close()
 
-# Adicione estas funções ao agendamento_dao.py
+def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim): # --- Refatorada para o MongoDB
+    """
+    [MongoDB] Verifica se a quadra está disponível no horário solicitado,
+    considerando agendamentos e eventos extraordinários.
+    """
+    db = conectar_mongo()
+    if db is None:
+        return False # Se não conectar, não permite agendar por segurança
 
-def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
-    """
-    Verifica se a quadra está disponível no horário solicitado.
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        return False
-        
-    cursor = conexao.cursor()
     try:
-        # Converter para timestamp completo
-        timestamp_ini = f"{data} {hora_ini}:00"
-        timestamp_fim = f"{data} {hora_fim}:00"
-        
-        query = """
-            SELECT COUNT(*) FROM agendamento 
-            WHERE id_ginasio = %s 
-            AND num_quadra = %s 
-            AND status_agendamento != 'cancelado'
-            AND (
-                (hora_ini < %s AND hora_fim > %s) OR
-                (hora_ini < %s AND hora_fim > %s) OR
-                (hora_ini >= %s AND hora_fim <= %s)
-            )
-        """
-        cursor.execute(query, (
-            id_ginasio, num_quadra,
-            timestamp_fim, timestamp_ini,
-            timestamp_ini, timestamp_fim,
-            timestamp_ini, timestamp_fim
-        ))
-        conflitos = cursor.fetchone()[0]
-        print(f"DEBUG: Conflitos de horário encontrados: {conflitos}")
-        
-        return conflitos == 0
-        
-    except Exception as e:
-        print(f"Erro ao verificar disponibilidade: {e}")
-        return False
-    finally:
-        cursor.close()
-        conexao.close()
+        # Converte as strings de data e hora para objetos datetime
+        timestamp_ini = datetime.fromisoformat(f"{data}T{hora_ini}")
+        timestamp_fim = datetime.fromisoformat(f"{data}T{hora_fim}")
 
-def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
-    """
-    Verifica se a quadra está disponível no horário solicitado.
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        return False
+        # Reutiliza o método já migrado da classe AgendamentoDAO
+        dao = AgendamentoDAO()
+        # O método já retorna True se houver conflito, então retornamos o inverso
+        tem_conflito = dao.verificar_conflito_de_horario(id_ginasio, num_quadra, timestamp_ini, timestamp_fim)
         
-    cursor = conexao.cursor()
-    try:
-        # Converter para timestamp completo
-        timestamp_ini = f"{data} {hora_ini}:00"
-        timestamp_fim = f"{data} {hora_fim}:00"
-        
-        query = """
-            SELECT COUNT(*) FROM agendamento 
-            WHERE id_ginasio = %s 
-            AND num_quadra = %s 
-            AND status_agendamento != 'cancelado'
-            AND (
-                (hora_ini < %s AND hora_fim > %s) OR
-                (hora_ini < %s AND hora_fim > %s)
-            )
-        """
-        cursor.execute(query, (
-            id_ginasio, num_quadra,
-            timestamp_fim, timestamp_ini,  # hora_ini < timestamp_fim AND hora_fim > timestamp_ini
-            timestamp_ini, timestamp_fim   # hora_ini < timestamp_ini AND hora_fim > timestamp_fim
-        ))
-        conflitos = cursor.fetchone()[0]
-        
-        print(f"DEBUG: Conflitos encontrados: {conflitos}")
-        return conflitos == 0
-        
+        return not tem_conflito # Retorna True se NÃO houver conflito (está disponível)
+
     except Exception as e:
-        print(f"Erro ao verificar disponibilidade: {e}")
+        print(f"Erro ao verificar disponibilidade no MongoDB: {e}")
         return False
-    finally:
-        cursor.close()
-        conexao.close()
 
 def verificar_usuario_existe(cpf):
     """
@@ -696,7 +740,6 @@ def verificar_estrutura_tabela():
     finally:
         cursor.close()
         conexao.close()
-# Adicionar esta função no agendamento_dao.py para verificar a estrutura
 
 def verificar_estrutura_agendamento():
     """
@@ -725,57 +768,44 @@ def verificar_estrutura_agendamento():
         cursor.close()
         conexao.close()
 
-def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim, motivo_evento=None):
+def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim, motivo_evento=None): # --- Refatorada para o MongoDB
     """
-    Cria um novo agendamento no banco de dados.
-    Se motivo_evento for fornecido, é um agendamento de evento.
+    [MongoDB] Cria um novo documento de agendamento na coleção 'agendamentos'.
     """
-    conexao = conectar_mongo()
-    if not conexao:
-        print("DEBUG: Falha na conexão com o banco")
+    db = conectar_mongo()
+    if db is None:
         return False
-        
-    cursor = conexao.cursor()
+
     try:
-        # Converter para timestamp completo
-        timestamp_ini = f"{data} {hora_ini}:00"
-        timestamp_fim = f"{data} {hora_fim}:00"
-        
-        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
-        
-        if motivo_evento:
-            # Agendamento de evento - usar status confirmado e incluir motivo
-            query = """
-                INSERT INTO agendamento 
-                (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento, motivo)
-                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado', %s)
-            """
-            cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim, f"Evento: {motivo_evento}"))
-        else:
-            # Agendamento normal
-            query = """
-                INSERT INTO agendamento 
-                (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
-                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
-            """
-            cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
-        
-        conexao.commit()
-        
-        print(f"DEBUG: Agendamento inserido - Linhas afetadas: {cursor.rowcount}")
-        
-        if cursor.rowcount > 0:
-            print("DEBUG: Agendamento criado com SUCESSO no banco")
-            return True
-        else:
-            print("DEBUG: Nenhuma linha afetada - agendamento NÃO criado")
+        # Busca informações para embutir no documento
+        usuario_info = db.usuarios.find_one({"_id": cpf_usuario}, {"nome": 1})
+        ginasio_info = db.ginasios.find_one({"_id": int(id_ginasio)}, {"nome": 1})
+
+        if not usuario_info or not ginasio_info:
+            print("ERRO[DAO-Mongo]: Usuário ou Ginásio não encontrado para criar agendamento.")
             return False
-            
-    except Exception as e:
-        print(f"DEBUG: Erro ao criar agendamento: {e}")
-        conexao.rollback()
-        return False
-    finally:
-        cursor.close()
-        conexao.close()
+
+        # Monta o documento de agendamento
+        novo_agendamento = {
+            "cpf_usuario": cpf_usuario,
+            "id_ginasio": int(id_ginasio),
+            "num_quadra": int(num_quadra),
+            "data_solicitacao": datetime.now(),
+            "hora_ini": datetime.fromisoformat(f"{data}T{hora_ini}"),
+            "hora_fim": datetime.fromisoformat(f"{data}T{hora_fim}"),
+            "status_agendamento": "confirmado",
+            "usuario_info": {"nome": usuario_info.get('nome')},
+            "local_info": {"nome_ginasio": ginasio_info.get('nome')}
+        }
+
+        if motivo_evento:
+            novo_agendamento['motivo'] = f"Evento: {motivo_evento}"
+
+        # Insere o novo documento na coleção
+        resultado = db.agendamentos.insert_one(novo_agendamento)
         
+        return resultado.inserted_id is not None
+
+    except Exception as e:
+        print(f"Erro ao criar agendamento no MongoDB: {e}")
+        return False

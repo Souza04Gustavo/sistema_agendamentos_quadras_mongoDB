@@ -39,16 +39,15 @@
                     <td>{{ evento.nome }}</td>
                     <td>{{ evento.tipo_evento }}</td>
                     
-                    <!-- CORREÇÃO 1: Verifica se a variável existe, não se o método existe -->
                     {% if evento.data_principal %}
                         <td>{{ evento.data_principal.strftime('%d/%m/%Y') }}</td>
                     {% else %}
                         <td>N/A</td>
                     {% endif %}
 
-                    <!-- CORREÇÃO 2: Lógica simplificada e mais segura -->
+                    {# Usa o formato de 12 horas (%I) com AM/PM (%p) #}
                     {% if evento.tipo_evento == 'Extraordinário' and evento.detalhe_tempo %}
-                        <td>Fim: {{ evento.detalhe_tempo.strftime('%H:%M') }}</td>
+                        <td>Fim: {{ evento.detalhe_tempo.strftime('%I:%M %p') }}</td>
                     {% else %}
                         <td>{{ evento.detalhe_tempo or 'N/A' }}</td>
                     {% endif %}
