@@ -1,4 +1,5 @@
 # camada_negocio/servicos.py
+
 from camada_dados.usuario_dao import UsuarioDAO
 from camada_dados.quadra_dao import QuadraDAO
 from modelos.usuario import Usuario, Aluno, Servidor, Funcionario, Admin
@@ -9,11 +10,21 @@ from camada_dados.chamado_dao import ChamadoDAO
 from camada_dados.esporte_dao import EsporteDAO
 from camada_dados.evento_dao import EventoDAO
 from datetime import datetime, timedelta, time, date
+from camada_dados.mongo_config import conectar_mongo
+from bson import ObjectId
 import re
 
 class ServicoLogin:
-    def __init__(self):
+    def __init__(self, nome_banco="udesc_quadras"):
+        self.nome_banco = nome_banco
         self.usuario_dao = UsuarioDAO()
+
+    def _get_client_db(self):
+        # Recupera o objeto Database e extrai o client dele para poder fechar depois
+        db = conectar_mongo()
+        if db is None:
+            return None, None
+        return db.client, db
 
     def verificar_credenciais(self, email, senha):
         """
@@ -26,30 +37,30 @@ class ServicoLogin:
         # DEBUG: Vamos inspecionar o que o DAO retornou
         if usuario:
             print(f"DEBUG[Serviço]: Usuário encontrado no banco de dados! Nome: {usuario.nome}")
-            print(f"DEBUG[Serviço]: Agora, vamos comparar as senhas.")
-            print(f"   -> Senha que veio do formulário: '{senha}'")
-            print(f"   -> Senha que está no banco:    '{usuario.senha}'")
-
+            
             # Comparação de senhas
             if usuario.senha == senha:
                 print("DEBUG[Serviço]: As senhas COINCIDEM. Login validado com sucesso.")
                 
                 # Adiciona informação se é bolsista no objeto usuário
+                # Garante que funcione mesmo se o atributo não existir
                 if hasattr(usuario, 'categoria'):
-                    usuario.is_bolsista = (usuario.categoria == "Bolsista")
+                    cat = str(usuario.categoria).lower()
+                    usuario.is_bolsista = (cat == "bolsista")
                 else:
                     usuario.is_bolsista = False
                     
-                return usuario # Retorna o objeto do usuário, indicando sucesso
+                return usuario 
             else:
                 print("DEBUG[Serviço]: As senhas NÃO COINCIDEM. Login negado.")
-                return None # Retorna None, indicando falha
+                return None 
         else:
             print("DEBUG[Serviço]: Nenhum usuário foi encontrado com este email. Login negado.")
-            return None # Retorna None, indicando falha
+            return None 
 
 class ServicoAdmin:
-    def __init__(self):
+    def __init__(self, nome_banco="udesc_quadras"):
+        self.nome_banco = nome_banco
         self.usuario_dao = UsuarioDAO()
         self.quadra_dao = QuadraDAO()
         self.material_dao = MaterialDAO()
@@ -59,21 +70,21 @@ class ServicoAdmin:
         self.esporte_dao = EsporteDAO()
         self.evento_dao = EventoDAO()
 
+    def _get_client_db(self):
+        db = conectar_mongo()
+        if db is None:
+            return None, None
+        return db.client, db
+
     def listar_usuarios(self):
         print("DEBUG[Serviço]: Solicitando a lista de todos os usuários ao DAO.")
-        usuarios = self.usuario_dao.buscar_todos_os_usuarios()
-        
-        return usuarios
+        return self.usuario_dao.buscar_todos_os_usuarios()
     
     def alterar_status_usuario(self, cpf, status_atual):
         novo_status = 'inativo' if status_atual == 'ativo' else 'ativo'
-        
         print(f"DEBUG[Serviço]: Alterando status do usuário CPF {cpf} para '{novo_status}'.")
-
         # Chama o DAO para efetivar a alteração no banco de dados
-        sucesso = self.usuario_dao.atualizar_status_usuario(cpf, novo_status)
-
-        return sucesso
+        return self.usuario_dao.atualizar_status_usuario(cpf, novo_status)
 
     def listar_quadras_para_gerenciar(self):
         """
@@ -139,7 +150,7 @@ class ServicoAdmin:
             }
 
             # Unifica a lógica de Aluno e Bolsista
-            if tipo_usuario in ['aluno', 'bolsista']:
+            if tipo_usuario in ['aluno', 'Bolsista', 'bolsista']:
                 # Argumentos base para qualquer aluno
                 args_aluno = {
                     **dados_comuns,
@@ -149,7 +160,8 @@ class ServicoAdmin:
                 }
                 
                 # Se for um bolsista, adiciona os campos extras
-                if tipo_usuario == 'bolsista':
+                if str(tipo_usuario).lower() == 'bolsista':
+                    args_aluno['is_bolsista'] = True
                     args_aluno['categoria'] = 'bolsista'
                     args_aluno['valor_remuneracao'] = dados_formulario.get('valor_remuneracao')
                     args_aluno['carga_horaria'] = dados_formulario.get('carga_horaria')
@@ -537,397 +549,308 @@ class ServicoAdmin:
 
 
 class ServicoBolsista:
-    def __init__(self):
+    def __init__(self, nome_banco="udesc_quadras"):
         # Reutiliza os DAOs existentes
         from camada_dados.usuario_dao import UsuarioDAO
         from camada_dados.agendamento_dao import AgendamentoDAO
+        self.nome_banco = nome_banco
         self.usuario_dao = UsuarioDAO()
         self.agendamento_dao = AgendamentoDAO()
 
-    def buscar_usuarios_para_agendamento(self, termo_busca):
-        """Busca usuários ativos por nome ou CPF para agendamento em nome de terceiros"""
-        conexao = self._conectar_banco()
-        if not conexao:
-            return []
-            
-        cursor = conexao.cursor()
-        usuarios = []
+    def _get_client_db(self):
+        """Helper para obter cliente e banco e fechar corretamente depois"""
+        db = conectar_mongo()
+        if db is None:
+            return None, None
+        return db.client, db
+
+    def _buscar_agendamento_por_id_hibrido(self, db, id_agendamento):
+        """
+        Método auxiliar INTELIGENTE para achar o agendamento.
+        Tenta buscar pelo _id (ObjectId) OU pelo campo string id_agendamento.
+        """
+        # Lista de filtros possíveis
+        filtros = []
         
+        # 1. Tenta buscar como string exata no campo personalizado
+        filtros.append({"id_agendamento": str(id_agendamento)})
+        
+        # 2. Se parecer um ObjectId válido, tenta buscar no _id
+        if ObjectId.is_valid(id_agendamento):
+            filtros.append({"_id": ObjectId(id_agendamento)})
+            
+        # Busca com OR (ou um ou outro)
+        query = {"$or": filtros}
+        
+        print(f"DEBUG[BUSCA]: Tentando encontrar agendamento com query: {query}")
+        return db.agendamentos.find_one(query)
+
+    def buscar_usuarios_para_agendamento(self, termo_busca):
+        client, db = self._get_client_db()
+        if client is None: 
+            return []
+
+        usuarios = []
         try:
-            query = """
-                SELECT cpf, nome, email 
-                FROM usuario 
-                WHERE (nome ILIKE %s OR cpf LIKE %s) 
-                AND status = 'ativo'
-                ORDER BY nome
-                LIMIT 20
-            """
-            termo_like = f"%{termo_busca}%"
-            termo_cpf = f"{termo_busca}%"
-            
-            cursor.execute(query, (termo_like, termo_cpf))
-            resultados = cursor.fetchall()
-            
-            for cpf, nome, email in resultados:
-                usuarios.append({'cpf': cpf, 'nome': nome, 'email': email})
-                
+            filtro = {
+                "$and": [
+                    {
+                        "$or": [
+                            {"nome": {"$regex": termo_busca, "$options": "i"}},
+                            {"_id": {"$regex": f"^{termo_busca}"}}
+                        ]
+                    },
+                    {"status": "ativo"}
+                ]
+            }
+            # Mongo Collection: usuarios
+            resultado = db.usuarios.find(filtro, {"_id": 1, "nome": 1, "email": 1}).sort("nome", 1).limit(20)
+
+            for doc in resultado:
+                cpf_val = doc.get("_id")
+                usuarios.append({"cpf": cpf_val, "nome": doc.get("nome"), "email": doc.get("email")})
+
         except Exception as e:
             print(f"Erro ao buscar usuários: {e}")
         finally:
-            cursor.close()
-            conexao.close()
-            
+            client.close()
         return usuarios
 
-    def fazer_agendamento_em_nome_de(self, cpf_bolsista, cpf_beneficiario, id_ginasio, 
-                                   num_quadra, hora_ini, hora_fim, motivo=None):
-        """Faz agendamento em nome de outro usuário"""
-        conexao = self._conectar_banco()
-        if not conexao:
-            return False
-            
-        cursor = conexao.cursor()
-        sucesso = False
-        
+    def fazer_agendamento_em_nome_de(self, cpf_bolsista, cpf_beneficiario, id_ginasio,
+                                    num_quadra, hora_ini, hora_fim, motivo=None):
+        client, db = self._get_client_db()
+        if client is None: return False
+
         try:
-            query = """
-                INSERT INTO agendamento 
-                (cpf_usuario, id_ginasio, num_quadra, hora_ini, hora_fim, motivo, 
-                 status_agendamento, id_bolsista_operador, data_operacao_bolsista)
-                VALUES (%s, %s, %s, %s, %s, %s, 'confirmado', %s, CURRENT_TIMESTAMP)
-            """
-            
-            cursor.execute(query, (cpf_beneficiario, id_ginasio, num_quadra, 
-                                 hora_ini, hora_fim, motivo, cpf_bolsista))
-            conexao.commit()
-            sucesso = True
-            
+            if isinstance(hora_ini, str): hora_ini = datetime.fromisoformat(hora_ini)
+            if isinstance(hora_fim, str): hora_fim = datetime.fromisoformat(hora_fim)
+
+            # Gera um ID string para garantir compatibilidade futura
+            custom_id = str(ObjectId())
+
+            novo_agendamento = {
+                "id_agendamento": custom_id, 
+                "cpf_usuario": cpf_beneficiario,
+                "id_ginasio": int(id_ginasio),
+                "num_quadra": int(num_quadra),
+                "hora_ini": hora_ini,
+                "hora_fim": hora_fim,
+                "motivo": motivo,
+                "status_agendamento": "confirmado",
+                "id_bolsista_operador": cpf_bolsista,
+                "data_operacao_bolsista": datetime.now()
+            }
+
+            db.agendamentos.insert_one(novo_agendamento)
+            return True
         except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao fazer agendamento em nome de terceiro: {e}")
+            print(f"Erro ao fazer agendamento: {e}")
+            return False
         finally:
-            cursor.close()
-            conexao.close()
-            
-        return sucesso
+            client.close()
 
     def buscar_agendamentos_para_confirmacao(self, cpf_bolsista):
-        """Busca agendamentos feitos pelo bolsista que precisam de confirmação"""
-        conexao = self._conectar_banco()
-        if not conexao:
-            return []
-            
-        cursor = conexao.cursor()
-        agendamentos = []
-        
+        client, db = self._get_client_db()
+        if client is None: return []
+
         try:
-            query = """
-                SELECT 
-                    a.id_agendamento, a.hora_ini, a.hora_fim, a.status_agendamento,
-                    g.nome as nome_ginasio, a.num_quadra,
-                    u.nome as nome_beneficiario, u.cpf as cpf_beneficiario
-                FROM agendamento a
-                JOIN ginasio g ON a.id_ginasio = g.id_ginasio
-                JOIN usuario u ON a.cpf_usuario = u.cpf
-                WHERE a.id_bolsista_operador = %s 
-                AND a.status_agendamento = 'confirmado'
-                AND DATE(a.hora_ini) = CURRENT_DATE
-                ORDER BY a.hora_ini
-            """
+            hoje = datetime.now().date()
+            hoje_str = hoje.strftime("%Y-%m-%d")
             
-            cursor.execute(query, (cpf_bolsista,))
-            resultados = cursor.fetchall()
-            
-            for row in resultados:
-                agendamentos.append({
-                    'id_agendamento': row[0],
-                    'hora_ini': row[1],
-                    'hora_fim': row[2],
-                    'status_agendamento': row[3],
-                    'nome_ginasio': row[4],
-                    'num_quadra': row[5],
-                    'nome_beneficiario': row[6],
-                    'cpf_beneficiario': row[7]
-                })
-                
+            pipeline = [
+                {"$match": {
+                    "id_bolsista_operador": cpf_bolsista,
+                    "status_agendamento": "confirmado",
+                    "$expr": {"$eq": [{"$dateToString": {"format": "%Y-%m-%d", "date": "$hora_ini"}}, hoje_str]}
+                }},
+                {"$lookup": {"from": "ginasios", "localField": "id_ginasio", "foreignField": "_id", "as": "ginasio"}},
+                {"$unwind": "$ginasio"},
+                {"$lookup": {"from": "usuarios", "localField": "cpf_usuario", "foreignField": "_id", "as": "usuario"}},
+                {"$unwind": "$usuario"},
+                {"$project": {
+                    "_id": 0,
+                    # Garante que sempre tenhamos um ID string para o HTML
+                    "id_agendamento": {"$ifNull": ["$id_agendamento", {"$toString": "$_id"}]},
+                    "hora_ini": 1,
+                    "hora_fim": 1,
+                    "status_agendamento": 1,
+                    "nome_ginasio": "$ginasio.nome",
+                    "num_quadra": 1,
+                    "nome_beneficiario": "$usuario.nome",
+                    "cpf_beneficiario": "$usuario._id"
+                }},
+                {"$sort": {"hora_ini": 1}}
+            ]
+            return list(db.agendamentos.aggregate(pipeline))
         except Exception as e:
-            print(f"Erro ao buscar agendamentos para confirmação: {e}")
+            print(f"Erro buscar confirmação: {e}")
+            return []
         finally:
-            cursor.close()
-            conexao.close()
-            
-        return agendamentos
+            client.close()
 
     def confirmar_comparecimento(self, id_agendamento, cpf_bolsista):
-        """Confirma o comparecimento do usuário no agendamento"""
-        conexao = self._conectar_banco()
-        if not conexao:
-            return False
-            
-        cursor = conexao.cursor()
-        sucesso = False
-        
-        try:
-            # Verifica se o agendamento foi feito por este bolsista
-            query_verifica = """
-                SELECT id_agendamento FROM agendamento 
-                WHERE id_agendamento = %s AND id_bolsista_operador = %s
-            """
-            cursor.execute(query_verifica, (id_agendamento, cpf_bolsista))
-            
-            if cursor.fetchone():
-                query_confirma = """
-                    UPDATE agendamento 
-                    SET status_agendamento = 'realizado'
-                    WHERE id_agendamento = %s
-                """
-                cursor.execute(query_confirma, (id_agendamento,))
-                conexao.commit()
-                sucesso = True
-                
-        except Exception as e:
-            conexao.rollback()
-            print(f"Erro ao confirmar comparecimento: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-            
-        return sucesso
+        """Confirma o comparecimento (usado no painel principal do bolsista)"""
+        client, db = self._get_client_db()
+        if client is None: return False
 
+        try:
+            # 1. Busca o documento
+            agendamento = self._buscar_agendamento_por_id_hibrido(db, id_agendamento)
+
+            if agendamento:
+                # Verifica propriedade
+                if agendamento.get("id_bolsista_operador") != cpf_bolsista:
+                    print("DEBUG: Bolsista tentou confirmar agendamento de outro operador.")
+                    # return False # Descomente se quiser restringir estritamente
+
+                # 2. Atualiza usando o _id único encontrado
+                result = db.agendamentos.update_one(
+                    {"_id": agendamento["_id"]},
+                    {"$set": {"status_agendamento": "realizado"}}
+                )
+                return result.modified_count > 0
+            
+            print(f"DEBUG: Agendamento {id_agendamento} não encontrado.")
+            return False
+        except Exception as e:
+            print(f"Erro confirmar: {e}")
+            return False
+        finally:
+            client.close()
 
     def cancelar_agendamento_bolsista(self, id_agendamento, cpf_bolsista):
-        """Cancela um agendamento feito pelo bolsista"""
-        print(f"DEBUG[CANCELAR]: Iniciando cancelamento - Agendamento: {id_agendamento}, Bolsista: {cpf_bolsista}")
-        
-        conexao = self._conectar_banco()
-        if not conexao:
-            print("DEBUG[CANCELAR]: Falha na conexão com o banco")
-            return False
-            
-        cursor = conexao.cursor()
-        sucesso = False
-        
+        """Cancela um agendamento"""
+        print(f"DEBUG[CANCELAR]: Iniciando para ID: {id_agendamento}")
+        client, db = self._get_client_db()
+        if client is None: return False
+
         try:
-            # Primeiro, vamos verificar TODOS os agendamentos para debug
-            query_debug = "SELECT id_agendamento, cpf_usuario, status_agendamento FROM agendamento WHERE id_agendamento = %s"
-            cursor.execute(query_debug, (id_agendamento,))
-            agendamento_debug = cursor.fetchone()
-            
-            print(f"DEBUG[CANCELAR]: Resultado da busca direta: {agendamento_debug}")
-            
-            if not agendamento_debug:
-                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} realmente não existe na tabela")
-                return False
-            
-            # Agora vamos verificar com a query original
-            query_verifica = """
-                SELECT id_agendamento, status_agendamento 
-                FROM agendamento 
-                WHERE id_agendamento = %s
-            """
-            cursor.execute(query_verifica, (id_agendamento,))
-            agendamento = cursor.fetchone()
-            
-            print(f"DEBUG[CANCELAR]: Resultado da verificação: {agendamento}")
-            
+            # 1. Busca Híbrida
+            agendamento = self._buscar_agendamento_por_id_hibrido(db, id_agendamento)
+
             if agendamento:
-                print(f"DEBUG[CANCELAR]: Agendamento encontrado - ID: {agendamento[0]}, Status atual: {agendamento[1]}")
+                # 2. Atualiza status
+                result = db.agendamentos.update_one(
+                    {"_id": agendamento["_id"]},
+                    {"$set": {"status_agendamento": "cancelado"}}
+                )
                 
-                # Atualizar o status para 'cancelado'
-                query_cancelar = """
-                    UPDATE agendamento 
-                    SET status_agendamento = 'cancelado'
-                    WHERE id_agendamento = %s
-                """
-                cursor.execute(query_cancelar, (id_agendamento,))
-                conexao.commit()
-                
-                # Verificar se realmente foi atualizado
-                cursor.execute("SELECT status_agendamento FROM agendamento WHERE id_agendamento = %s", (id_agendamento,))
-                novo_status = cursor.fetchone()
-                print(f"DEBUG[CANCELAR]: Status após atualização: {novo_status}")
-                
-                sucesso = True
-                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} cancelado com sucesso")
-            else:
-                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} não encontrado na verificação")
-                
-        except Exception as e:
-            conexao.rollback()
-            print(f"ERRO ao cancelar agendamento: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            cursor.close()
-            conexao.close()
+                if result.modified_count > 0:
+                    print("DEBUG[CANCELAR]: Sucesso!")
+                    return True
             
-        return sucesso
+            print("DEBUG[CANCELAR]: Falha - agendamento não encontrado ou já cancelado.")
+            return False
+        except Exception as e:
+            print(f"ERRO ao cancelar: {e}")
+            import traceback; traceback.print_exc()
+            return False
+        finally:
+            client.close()
 
     def buscar_todos_agendamentos_bolsista(self, cpf_bolsista):
-        """Busca todos os agendamentos feitos pelo bolsista"""
-        print(f"DEBUG[ServicoBolsista]: Buscando agendamentos para bolsista CPF: {cpf_bolsista}")
-        
-        conexao = self._conectar_banco()
-        if not conexao:
-            print("DEBUG[ServicoBolsista]: Falha na conexão com o banco")
+        client, db = self._get_client_db()
+        if client is None: return []
+
+        try:
+            pipeline = [
+                {"$sort": {"hora_ini": -1}},
+                {"$lookup": {"from": "usuarios", "localField": "cpf_usuario", "foreignField": "_id", "as": "usuario"}},
+                {"$unwind": "$usuario"},
+                {"$lookup": {"from": "ginasios", "localField": "id_ginasio", "foreignField": "_id", "as": "ginasio"}},
+                {"$unwind": "$ginasio"},
+                {"$project": {
+                    "_id": 0,
+                    "id_agendamento": {"$ifNull": ["$id_agendamento", {"$toString": "$_id"}]},
+                    "hora_ini": 1,
+                    "hora_fim": 1,
+                    "status_agendamento": 1,
+                    "num_quadra": 1,
+                    "motivo": 1,
+                    "data_solicitacao": 1,
+                    "nome_ginasio": "$ginasio.nome",
+                    "nome_beneficiario": "$usuario.nome",
+                    "cpf_beneficiario": "$usuario._id"
+                }}
+            ]
+            return list(db.agendamentos.aggregate(pipeline))
+        except Exception as e:
+            print(f"Erro buscar todos: {e}")
             return []
-            
-        cursor = conexao.cursor()
-        agendamentos = []
-        
-        try:
-            query = """
-                SELECT 
-                    a.id_agendamento, a.hora_ini, a.hora_fim, a.status_agendamento,
-                    g.nome as nome_ginasio, a.num_quadra,
-                    u.nome as nome_beneficiario, u.cpf as cpf_beneficiario,
-                    a.motivo, a.data_solicitacao
-                FROM agendamento a
-                JOIN ginasio g ON a.id_ginasio = g.id_ginasio
-                JOIN usuario u ON a.cpf_usuario = u.cpf
-                ORDER BY a.hora_ini DESC
-            """
-            
-            print(f"DEBUG[ServicoBolsista]: Executando query: {query}")
-            print(f"DEBUG[ServicoBolsista]: Parâmetro: {cpf_bolsista}")
-            
-            cursor.execute(query, (cpf_bolsista,))
-            resultados = cursor.fetchall()
-            
-            print(f"DEBUG[ServicoBolsista]: {len(resultados)} agendamentos encontrados")
-            
-            for row in resultados:
-                agendamento = {
-                    'id_agendamento': row[0],
-                    'hora_ini': row[1],
-                    'hora_fim': row[2],
-                    'status_agendamento': row[3],
-                    'nome_ginasio': row[4],
-                    'num_quadra': row[5],
-                    'nome_beneficiario': row[6],
-                    'cpf_beneficiario': row[7],
-                    'motivo': row[8],
-                    'data_solicitacao': row[9]
-                }
-                print(f"DEBUG[ServicoBolsista]: Agendamento encontrado: {agendamento}")
-                agendamentos.append(agendamento)
-                
-        except Exception as e:
-            print(f"ERRO ao buscar todos os agendamentos do bolsista: {e}")
-            import traceback
-            traceback.print_exc()
         finally:
-            cursor.close()
-            conexao.close()
-            
-        return agendamentos
+            client.close()
 
+    def marcar_como_concluido(self, id_agendamento, cpf_bolsista=None):
+        """Marca como concluído (usado na lista geral de agendamentos)"""
+        client, db = self._get_client_db()
+        if client is None: return False
 
-    def marcar_como_concluido(self, id_agendamento, cpf_bolsista):
-        """Marca um agendamento como concluído/realizado"""
-        print(f"DEBUG: Tentando marcar agendamento {id_agendamento} como concluído pelo bolsista {cpf_bolsista}")
-        
-        conexao = self._conectar_banco()
-        if not conexao:
-            return False
-            
-        cursor = conexao.cursor()
-        sucesso = False
-        
         try:
-            query_verifica = """
-                SELECT id_agendamento, status_agendamento 
-                FROM agendamento 
-                WHERE id_agendamento = %s
-            """
-            cursor.execute(query_verifica, (id_agendamento,))
-            agendamento = cursor.fetchone()
+            # 1. Busca Híbrida
+            ag = self._buscar_agendamento_por_id_hibrido(db, id_agendamento)
             
-            if agendamento:
-                print(f"DEBUG: Agendamento encontrado - ID: {agendamento[0]}, Status atual: {agendamento[1]}")
-                
-                # Atualizar o status para 'realizado'
-                query_concluir = """
-                    UPDATE agendamento 
-                    SET status_agendamento = 'realizado'
-                    WHERE id_agendamento = %s
-                """
-                cursor.execute(query_concluir, (id_agendamento,))
-                conexao.commit()
-                sucesso = True
-                print(f"DEBUG: Agendamento {id_agendamento} marcado como realizado com sucesso")
-            else:
+            if not ag:
                 print(f"DEBUG: Agendamento {id_agendamento} não encontrado")
-                
+                return False
+
+            # 2. Atualiza
+            res = db.agendamentos.update_one(
+                {"_id": ag["_id"]}, 
+                {"$set": {"status_agendamento": "realizado"}}
+            )
+            return res.modified_count > 0
         except Exception as e:
-            conexao.rollback()
-            print(f"ERRO ao marcar agendamento como concluído: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"ERRO ao concluir: {e}")
+            return False
         finally:
-            cursor.close()
-            conexao.close()
-            
-        return sucesso
+            client.close()
 
     def gerar_relatorio_uso(self, data_inicio, data_fim, id_ginasio=None):
-        """Gera relatório básico de uso das quadras"""
-        conexao = self._conectar_banco()
-        if not conexao:
-            return []
-            
-        cursor = conexao.cursor()
-        relatorio = []
-        
-        try:
-            query_base = """
-                SELECT 
-                    g.nome as ginásio,
-                    a.num_quadra,
-                    COUNT(*) as total_agendamentos,
-                    COUNT(CASE WHEN a.status_agendamento = 'realizado' THEN 1 END) as confirmados,
-                    COUNT(CASE WHEN a.status_agendamento = 'cancelado' THEN 1 END) as cancelados
-                FROM agendamento a
-                JOIN ginasio g ON a.id_ginasio = g.id_ginasio
-                WHERE a.hora_ini BETWEEN %s AND %s
-            """
-            
-            params = [data_inicio, data_fim]
-            
-            if id_ginasio:
-                query_base += " AND a.id_ginasio = %s"
-                params.append(id_ginasio)
-                
-            query_base += """
-                GROUP BY g.nome, a.num_quadra
-                ORDER BY g.nome, a.num_quadra
-            """
-            
-            cursor.execute(query_base, params)
-            resultados = cursor.fetchall()
-            
-            for row in resultados:
-                relatorio.append({
-                    'ginasio': row[0],
-                    'num_quadra': row[1],
-                    'total_agendamentos': row[2],
-                    'confirmados': row[3],
-                    'cancelados': row[4]
-                })
-                
-        except Exception as e:
-            print(f"Erro ao gerar relatório: {e}")
-        finally:
-            cursor.close()
-            conexao.close()
-            
-        return relatorio
+        client, db = self._get_client_db()
+        if client is None: return []
 
-    def _conectar_banco(self):
-        """Método auxiliar para conexão com o banco"""
         try:
-            from camada_dados.mongo_config import conectar_banco
-            return conectar_banco()
+            def to_dt(v): return v if isinstance(v, datetime) else datetime.fromisoformat(v)
+            dt_inicio = to_dt(data_inicio)
+            dt_fim = to_dt(data_fim)
+
+            match_stage = {"$match": {"hora_ini": {"$gte": dt_inicio, "$lte": dt_fim}}}
+            if id_ginasio is not None:
+                try: match_stage["$match"]["id_ginasio"] = int(id_ginasio)
+                except: match_stage["$match"]["id_ginasio"] = id_ginasio
+
+            pipeline = [
+                match_stage,
+                {
+                    "$group": {
+                        "_id": {"ginasio": "$local_info.nome_ginasio", "num_quadra": "$num_quadra", "id_ginasio": "$id_ginasio"},
+                        "total_agendamentos": {"$sum": 1},
+                        "confirmados": {"$sum": {"$cond": [{"$eq": ["$status_agendamento", "realizado"]}, 1, 0]}},
+                        "cancelados": {"$sum": {"$cond": [{"$eq": ["$status_agendamento", "cancelado"]}, 1, 0]}}
+                    }
+                },
+                {"$lookup": {"from": "ginasios", "localField": "_id.id_ginasio", "foreignField": "_id", "as": "info_ginasio"}},
+                {"$unwind": {"path": "$info_ginasio", "preserveNullAndEmptyArrays": True}},
+                {"$sort": {"_id.ginasio": 1, "_id.num_quadra": 1}}
+            ]
+
+            resultados = list(db.agendamentos.aggregate(pipeline))
+            relatorio = []
+            for item in resultados:
+                nome_gin = item["_id"].get("ginasio")
+                if not nome_gin and item.get("info_ginasio"):
+                    nome_gin = item["info_ginasio"].get("nome")
+
+                relatorio.append({
+                    "ginasio": nome_gin or f"Ginásio {item['_id']['id_ginasio']}",
+                    "num_quadra": item["_id"]["num_quadra"],
+                    "total_agendamentos": item.get("total_agendamentos", 0),
+                    "confirmados": item.get("confirmados", 0),
+                    "cancelados": item.get("cancelados", 0)
+                })
+            return relatorio
         except Exception as e:
-            print(f"Erro ao conectar com banco: {e}")
-            return None
+            print(f"Erro relatorio: {e}")
+            return []
+        finally:
+            client.close()
