@@ -9,9 +9,7 @@ from camada_dados.agendamento_dao import buscar_quadras_por_ginasio, verificar_d
 
 from camada_dados.mongo_config import conectar_mongo
 import re
-
 import os
-
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -43,12 +41,18 @@ def eh_bolsista():
         return False
     
     # Buscar informações completas do usuário
-    usuario_dao = UsuarioDAO()
-    usuario_completo = usuario_dao.buscar_por_cpf(usuario_info['cpf'])
+    # Instancia DAO localmente para garantir conexão fresca se necessário
+    dao_local = UsuarioDAO()
+    usuario_completo = dao_local.buscar_por_cpf(usuario_info['cpf'])
     
-    return (usuario_completo and 
-            hasattr(usuario_completo, 'categoria') and 
-            usuario_completo.categoria == "bolsista")
+    # Verifica a flag is_bolsista que adicionamos na classe Aluno ou a categoria string
+    eh = False
+    if hasattr(usuario_completo, 'is_bolsista'):
+        eh = usuario_completo.is_bolsista
+    elif hasattr(usuario_completo, 'categoria'):
+        eh = (str(usuario_completo.categoria).lower() == 'bolsista')
+        
+    return eh
 
 
 @app.route('/')
@@ -78,8 +82,10 @@ def login():
             
             # Adicionar informação se é bolsista na sessão
             eh_bolsista_flag = False
-            if hasattr(usuario, 'categoria'):
-                eh_bolsista_flag = (usuario.categoria == "bolsista")
+            if hasattr(usuario, 'is_bolsista'):
+                eh_bolsista_flag = usuario.is_bolsista
+            elif hasattr(usuario, 'categoria'):
+                eh_bolsista_flag = (str(usuario.categoria).lower() == "bolsista")
             
             session['usuario_logado'] = {
                 'cpf': usuario.cpf,
@@ -132,6 +138,7 @@ def cadastrar_aluno():
         ano_inicio = datetime.now().year
 
         # Cria o objeto Aluno
+        # Nota: O construtor do Aluno foi atualizado para aceitar is_bolsista e kwargs
         aluno = Aluno(
             cpf=cpf,
             nome=nome,
@@ -141,7 +148,8 @@ def cadastrar_aluno():
             status='ativo',
             matricula=matricula,
             curso=curso,
-            ano_inicio=ano_inicio
+            ano_inicio=ano_inicio,
+            is_bolsista=False # Padrão para cadastro público
         )
 
         dao = UsuarioDAO()
@@ -437,26 +445,22 @@ def admin_adicionar_usuario():
         flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
     
-    # Lógica POST para processar o formulário
+    supervisores = usuario_dao.buscar_todos_os_servidores()
+
     if request.method == 'POST':
-        # 1. Coleta TODOS os dados do formulário em um único dicionário
-        dados_do_formulario = request.form.to_dict()
-        
-        # 2. Delega TODA a lógica para a camada de serviço
-        sucesso = servico_admin.criar_novo_usuario(dados_do_formulario)
-        
-        # 3. Dá o feedback com base na resposta do serviço
+        # Delega a lógica de criação para o ServicoAdmin
+        sucesso = servico_admin.criar_novo_usuario(request.form)
+
         if sucesso:
-            flash(f"Usuário do tipo '{dados_do_formulario.get('tipo_usuario')}' criado com sucesso!", 'success')
+            flash(f'Usuário adicionado com sucesso!', 'success')
             return redirect(url_for('admin_gerenciar_usuarios'))
         else:
-            flash('Erro ao criar usuário. Verifique se o CPF ou Email já estão em uso.', 'error')
+            flash('Erro ao adicionar usuário. Verifique se o CPF já existe ou se os dados estão corretos.', 'error')
+            # Em caso de erro, idealmente manter os dados preenchidos, mas por simplicidade:
             return redirect(url_for('admin_adicionar_usuario'))
 
-    # Lógica GET para exibir o formulário
-    # A única responsabilidade no GET é buscar os dados para os dropdowns
-    lista_de_supervisores = usuario_dao.buscar_todos_os_servidores()
-    return render_template('admin_adicionar_usuario.html', supervisores=lista_de_supervisores)
+    # Renderiza o template, passando a lista de supervisores
+    return render_template('admin_adicionar_usuario.html', supervisores=supervisores)
 
 
 
@@ -800,7 +804,6 @@ def tabela_agendamento(ginasio_id, quadra_id):
         # Lógica para eventos recorrentes (verificada PRIMEIRO)
         if ocup['status'] == 'recorrente':
             regra = ocup['regra_recorrencia']
-            print(f"  -> É recorrente. Regra: '{regra}'")
             
             match = re.search(r"Tod[oa] ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra)
             
@@ -814,49 +817,38 @@ def tabela_agendamento(ginasio_id, quadra_id):
                         # Data em que o evento ocorreria nesta semana específica
                         data_do_evento_na_semana = dias_da_semana[dia_semana_num]
                         
-                        # ======================= INÍCIO DA CORREÇÃO FINAL =======================
-                        
                         # Data em que o documento do evento foi criado no MongoDB
-                        data_criacao_evento = ocup['_id'].generation_time.date()
-                        
-                        # SÓ exibe o evento se a data da sua ocorrência nesta semana
-                        # for igual ou posterior à data em que ele foi criado.
-                        if data_do_evento_na_semana >= data_criacao_evento:
-                        
-                        # ======================== FIM DA CORREÇÃO FINAL =========================
-                        
-                            hora_ini_evento = int(hora_ini_str[:2])
-                            hora_fim_evento = int(hora_fim_str[:2])
-                            if hora_fim_evento == 0: hora_fim_evento = 24
-                            
-                            for hora in range(hora_ini_evento, hora_fim_evento):
-                                hora_str_loop = f"{hora:02d}:00"
-                                if hora_str_loop in agendamentos_por_dia[data_do_evento_na_semana]:
-                                    # Para garantir que o nome seja exibido, criamos uma cópia
-                                    # e garantimos que a chave 'nome_evento' tenha o valor correto.
-                                    ocup_para_exibir = ocup.copy()
-                                    ocup_para_exibir['nome_evento'] = ocup.get('nome')
-                                    agendamentos_por_dia[data_do_evento_na_semana][hora_str_loop] = ocup_para_exibir
+                        if '_id' in ocup and hasattr(ocup['_id'], 'generation_time'):
+                            data_criacao_evento = ocup['_id'].generation_time.date()
+                            if data_do_evento_na_semana < data_criacao_evento:
+                                continue
 
-            else:
-                print("    -> ERRO: A regra de recorrência não correspondeu ao padrão esperado.")
-
+                        hora_ini_evento = int(hora_ini_str[:2])
+                        hora_fim_evento = int(hora_fim_str[:2])
+                        if hora_fim_evento == 0: hora_fim_evento = 24
+                        
+                        for hora in range(hora_ini_evento, hora_fim_evento):
+                            hora_str_loop = f"{hora:02d}:00"
+                            if hora_str_loop in agendamentos_por_dia[data_do_evento_na_semana]:
+                                # Para garantir que o nome seja exibido, criamos uma cópia
+                                # e garantimos que a chave 'nome_evento' tenha o valor correto.
+                                ocup_para_exibir = ocup.copy()
+                                ocup_para_exibir['nome_evento'] = ocup.get('nome')
+                                agendamentos_por_dia[data_do_evento_na_semana][hora_str_loop] = ocup_para_exibir
 
         # Lógica para agendamentos e eventos extraordinários
         elif ocup['hora_ini'] is not None and ocup['hora_fim'] is not None:
             
             # Verificação de segurança: só processa se o fim for depois do início
             if ocup['hora_fim'] <= ocup['hora_ini']:
-                print(f"  -> AVISO: Ocupação ID (ou nome '{ocup['nome_evento']}') tem hora_fim antes de hora_ini. Pulando.")
                 continue # Pula para a próxima ocupação no loop
-            print(f"  -> É agendamento/extraordinário. Período: {ocup['hora_ini']} a {ocup['hora_fim']}")
+            
             hora_atual = ocup['hora_ini']
             while hora_atual < ocup['hora_fim']:
                 data = hora_atual.date()
                 hora_str = f"{hora_atual.hour:02d}:00"
                 if data in agendamentos_por_dia and hora_str in agendamentos_por_dia[data]:
                     agendamentos_por_dia[data][hora_str] = ocup
-                    print(f"    -> PREENCHIDO: {data} às {hora_str}")
                 hora_atual += timedelta(hours=1)
     
     print("--- FIM DEBUG ---")
@@ -880,16 +872,12 @@ def tabela_agendamento(ginasio_id, quadra_id):
 @app.route('/fazer_agendamento', methods=['POST'])
 def fazer_agendamento():
     print(f"=== INICIANDO FAZER_AGENDAMENTO ===")
-    print(f"Sessão ANTES: {dict(session)}")
     
-    # CORREÇÃO: Use 'usuario_logado' em vez de 'cpf_usuario'
     if 'usuario_logado' not in session:
-        print("DEBUG: Usuário NÃO logado - redirecionando para login")
         flash('Você precisa estar logado para fazer um agendamento.', 'error')
         return redirect(url_for('login'))
     
     try:
-        # CORREÇÃO: Pegue o CPF do objeto usuario_logado
         usuario = session['usuario_logado']
         cpf_usuario = usuario['cpf']
         
@@ -899,12 +887,8 @@ def fazer_agendamento():
         hora_ini = request.form.get('hora_ini')
         hora_fim = request.form.get('hora_fim')
         
-        print(f"DEBUG: Dados do formulário - CPF:{cpf_usuario}, Ginásio:{id_ginasio}, Quadra:{num_quadra}")
-        print(f"DEBUG: Data:{data}, Hora:{hora_ini}-{hora_fim}")
-        
         # Verificar se todos os campos estão presentes
         if not all([cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim]):
-            print("DEBUG: Campos faltando no formulário")
             flash('Dados incompletos para o agendamento.', 'error')
             return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
         
@@ -915,12 +899,10 @@ def fazer_agendamento():
         # Verificar disponibilidade
         from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento
         disponivel = verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim)
-        print(f"DEBUG: Disponível? {disponivel}")
         
         if disponivel:
             # Criar agendamento
             sucesso = criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim)
-            print(f"DEBUG: Agendamento criado? {sucesso}")
             
             if sucesso:
                 flash('Agendamento realizado com sucesso!', 'success')
@@ -928,112 +910,98 @@ def fazer_agendamento():
                 flash('Erro ao realizar agendamento.', 'error')
         else:
             flash('Horário indisponível.', 'error')
-            print("DEBUG: Horário indisponível")
         
-        print(f"Sessão DEPOIS: {dict(session)}")
         return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
         
     except Exception as e:
         print(f"ERRO GRAVE em fazer_agendamento: {e}")
-        print(f"Sessão no ERRO: {dict(session)}")
         flash('Erro interno ao processar agendamento.', 'error')
         return redirect(url_for('index'))
     
 @app.route('/fazer_agendamento_outra_pessoa', methods=['POST'])
 def fazer_agendamento_outra_pessoa():
-    """
-    Rota para bolsistas fazerem agendamentos para outras pessoas.
-    """
-    print(f"=== INICIANDO FAZER_AGENDAMENTO_OUTRA_PESSOA ===")
-    print(f"Sessão: {dict(session)}")
+    print(f"\n=== DEBUG: INICIANDO AGENDAMENTO BOLSISTA ===")
     
-    # Verificar se é bolsista - CORREÇÃO: verificar eh_bolsista em vez de tipo
     if 'usuario_logado' not in session:
-        print("DEBUG: Nenhum usuário logado")
         flash('Você precisa estar logado.', 'error')
         return redirect(url_for('login'))
     
     usuario = session['usuario_logado']
-    
-    # CORREÇÃO: Verificar eh_bolsista em vez do tipo
     if not usuario.get('eh_bolsista'):
-        print(f"DEBUG: Usuário não é bolsista. eh_bolsista: {usuario.get('eh_bolsista')}")
-        flash('Apenas bolsistas podem fazer reservas para outras pessoas.', 'error')
+        flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
     
-    print("DEBUG: Usuário é bolsista - continuando...")
-    
     try:
-        # Resto do código permanece igual...
-        cpf_usuario = request.form.get('cpf_usuario')
+        # 1. Coleta e Limpeza de Dados
+        raw_cpf = request.form.get('cpf_usuario', '')
+        # REMOVE PONTOS E TRAÇOS DO CPF para garantir que bata com o banco
+        cpf_beneficiario = raw_cpf.replace('.', '').replace('-', '').strip()
+        
         id_ginasio = request.form.get('id_ginasio')
         num_quadra = request.form.get('num_quadra')
-        data = request.form.get('data')
-        hora_ini = request.form.get('hora_ini')
-        hora_fim = request.form.get('hora_fim')
+        data_str = request.form.get('data')
+        hora_ini_str = request.form.get('hora_ini')
+        hora_fim_str = request.form.get('hora_fim')
         
-        print(f"DEBUG: Dados recebidos - CPF:{cpf_usuario}, Ginásio:{id_ginasio}, Quadra:{num_quadra}")
-        print(f"DEBUG: Data:{data}, Hora:{hora_ini}-{hora_fim}")
+        print(f"DEBUG: Tentando agendar para CPF: {cpf_beneficiario} (Original: {raw_cpf})")
+        print(f"DEBUG: Local: Gin {id_ginasio} / Quadra {num_quadra}")
+        print(f"DEBUG: Data: {data_str} | Hora: {hora_ini_str} - {hora_fim_str}")
 
-        
-        # Verificar se todos os campos estão presentes
-        if not all([cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim]):
-            print("DEBUG: Campos faltando no formulário")
-            missing = []
-            if not cpf_usuario: missing.append('CPF')
-            if not id_ginasio: missing.append('Ginásio')
-            if not num_quadra: missing.append('Quadra')
-            if not data: missing.append('Data')
-            if not hora_ini: missing.append('Hora Início')
-            if not hora_fim: missing.append('Hora Fim')
-            print(f"DEBUG: Campos em falta: {missing}")
+        if not all([cpf_beneficiario, id_ginasio, num_quadra, data_str, hora_ini_str, hora_fim_str]):
             flash('Todos os campos são obrigatórios.', 'error')
             return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
-        
-        # Verificar se o usuário existe
-        from camada_dados.agendamento_dao import verificar_usuario_existe
-        usuario_existe = verificar_usuario_existe(cpf_usuario)
-        print(f"DEBUG: Usuário {cpf_usuario} existe? {usuario_existe}")
-        
-        if not usuario_existe:
-            flash('Usuário não encontrado.', 'error')
-            print("DEBUG: Usuário não encontrado")
-            return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
-        
-        # Converter para inteiros
-        id_ginasio = int(id_ginasio)
-        num_quadra = int(num_quadra)
-        
-        # Verificar disponibilidade
-        from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento
-        disponivel = verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim)
-        print(f"DEBUG: Horário disponível? {disponivel}")
-        
-        if disponivel:
-            # Criar agendamento para o outro usuário
-            sucesso = criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim)
-            print(f"DEBUG: Agendamento criado com sucesso? {sucesso}")
+
+        # 2. Conversão de Tipos Segura
+        try:
+            id_ginasio_int = int(id_ginasio)
+            num_quadra_int = int(num_quadra)
             
-            if sucesso:
-                flash(f'Agendamento realizado com sucesso para o usuário {cpf_usuario}!', 'success')
-                print("DEBUG: Agendamento para outra pessoa criado com sucesso!")
-            else:
-                flash('Erro ao realizar agendamento.', 'error')
-                print("DEBUG: Erro ao criar agendamento para outra pessoa")
+            # Converte data e hora para objetos datetime
+            data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+            hora_i_obj = datetime.strptime(hora_ini_str, "%H:%M").time()
+            hora_f_obj = datetime.strptime(hora_fim_str, "%H:%M").time()
+            
+            # Cria os datetimes completos
+            data_hora_inicio = datetime.combine(data_obj, hora_i_obj)
+            data_hora_fim = datetime.combine(data_obj, hora_f_obj)
+            
+        except ValueError as ve:
+            print(f"ERRO DE CONVERSÃO: {ve}")
+            flash('Erro no formato dos dados (data ou números).', 'error')
+            return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
+
+        # 3. Execução Direta via Serviço (Ignora o DAO antigo para evitar conflito SQL/NoSQL)
+        # O CPF do bolsista também precisa ser limpo se estiver na sessão com pontos
+        cpf_bolsista = usuario['cpf'].replace('.', '').replace('-', '').strip()
+        
+        print("DEBUG: Chamando serviço de bolsista...")
+        sucesso = servico_bolsista.fazer_agendamento_em_nome_de(
+            cpf_bolsista=cpf_bolsista,
+            cpf_beneficiario=cpf_beneficiario,
+            id_ginasio=id_ginasio_int,
+            num_quadra=num_quadra_int,
+            hora_ini=data_hora_inicio,
+            hora_fim=data_hora_fim,
+            motivo="Agendamento Balcão (Bolsista)"
+        )
+        
+        if sucesso:
+            flash(f'Agendamento realizado com sucesso para o usuário {cpf_beneficiario}!', 'success')
+            print("DEBUG: Agendamento SUCESSO")
         else:
-            flash('Horário indisponível.', 'error')
-            print("DEBUG: Horário indisponível para outra pessoa")
+            flash('Erro ao realizar agendamento. Verifique se o usuário existe ou tente novamente.', 'error')
+            print("DEBUG: Agendamento FALHA (retorno False do serviço)")
         
         return redirect(url_for('tabela_agendamento', ginasio_id=id_ginasio, quadra_id=num_quadra))
         
     except Exception as e:
-        print(f"ERRO em fazer_agendamento_outra_pessoa: {e}")
+        print(f"ERRO CRÍTICO NA ROTA: {e}")
+        # Imprime o erro real no terminal para você ver
         import traceback
         traceback.print_exc()
-        flash('Erro interno ao processar agendamento.', 'error')
+        flash(f'Ocorreu um erro interno: {str(e)}', 'error')
         return redirect(url_for('index'))
     
-
 @app.route('/bolsista/agendamentos')
 def bolsista_agendamentos():
     """
@@ -1058,7 +1026,10 @@ def bolsista_agendamentos():
                          agendamentos_cancelados=agendamentos_cancelados,
                          agendamentos_realizados=agendamentos_realizados)
 
-@app.route('/bolsista/cancelar_agendamento/<int:id_agendamento>', methods=['POST'])
+# =========================================================================
+# CORREÇÃO PRINCIPAL AQUI: Mudado de <int:id_agendamento> para <string:id_agendamento>
+# =========================================================================
+@app.route('/bolsista/cancelar_agendamento/<string:id_agendamento>', methods=['POST'])
 def bolsista_cancelar_agendamento(id_agendamento):
     """
     Rota para bolsistas cancelarem agendamentos.
@@ -1076,15 +1047,16 @@ def bolsista_cancelar_agendamento(id_agendamento):
     
     if sucesso:
         flash(f'Agendamento #{id_agendamento} cancelado com sucesso!', 'success')
-        print(f"DEBUG[ROTA BOLSISTA]: Cancelamento bem-sucedido para agendamento {id_agendamento}")
     else:
         flash('Erro ao cancelar agendamento.', 'error')
-        print(f"DEBUG[ROTA BOLSISTA]: Falha no cancelamento para agendamento {id_agendamento}")
     
     # Forçar um refresh da página para garantir que os dados atualizados sejam buscados
     return redirect(url_for('bolsista_agendamentos', _t=int(datetime.now().timestamp())))
 
-@app.route('/bolsista/concluir_agendamento/<int:id_agendamento>', methods=['POST'])
+# =========================================================================
+# CORREÇÃO PRINCIPAL AQUI: Mudado de <int:id_agendamento> para <string:id_agendamento>
+# =========================================================================
+@app.route('/bolsista/concluir_agendamento/<string:id_agendamento>', methods=['POST'])
 def bolsista_concluir_agendamento(id_agendamento):
     """
     Rota para bolsistas marcarem agendamentos como concluídos.
