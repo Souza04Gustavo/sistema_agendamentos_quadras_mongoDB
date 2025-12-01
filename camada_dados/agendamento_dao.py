@@ -554,120 +554,98 @@ def buscar_quadras_por_ginasio(id_ginasio):  # --- Refatorada para o MongoDB
         
     return quadras_obj
 
-def inserir_agendamento(usuario_id, quadra_id, data, hora_inicio, hora_fim):
+def inserir_agendamento(cpf_usuario, id_ginasio, num_quadra, hora_ini, hora_fim):
     """
-    Insere um novo agendamento no banco de dados.
-    O status inicial será 'pendente'.
+    Insere um novo agendamento na coleção MongoDB 'agendamentos'.
+    O status inicial sempre será 'pendente'.
     """
-    conexao = conectar_mongo()
-    cursor = conexao.cursor()
-
-    query = """
-        INSERT INTO agendamento (usuario_id, quadra_id, data, hora_inicio, hora_fim, status)
-        VALUES (%s, %s, %s, %s, %s, 'pendente');
-    """
-    cursor.execute(query, (usuario_id, quadra_id, data, hora_inicio, hora_fim))
-    conexao.commit()
-
-    cursor.close()
-    conexao.close()
-    return True
-
-def atualizar_status_agendamento(agendamento_id, novo_status):
-    """
-    Atualiza o status de um agendamento (por exemplo, confirmado, cancelado, rejeitado).
-    CORREÇÃO: usando id_agendamento em vez de id
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        print("DEBUG: Falha na conexão com o banco")
+    db = conectar_mongo()
+    if db is None:
         return False
-        
-    cursor = conexao.cursor()
+
     try:
-        # CORREÇÃO: usar id_agendamento em vez de id
-        query = "UPDATE agendamento SET status_agendamento = %s WHERE id_agendamento = %s;"
-        cursor.execute(query, (novo_status, agendamento_id))
-        conexao.commit()
-        
-        print(f"DEBUG: Status do agendamento {agendamento_id} atualizado para '{novo_status}'")
-        print(f"DEBUG: Linhas afetadas: {cursor.rowcount}")
-        
-        return cursor.rowcount > 0
-        
+        novo = {
+            "cpf_usuario": cpf_usuario,
+            "id_ginasio": int(id_ginasio),
+            "num_quadra": int(num_quadra),
+            "hora_ini": hora_ini,
+            "hora_fim": hora_fim,
+            "status_agendamento": "pendente",
+            "data_solicitacao": datetime.now()
+        }
+
+        result = db.agendamentos.insert_one(novo)
+        print(f"DEBUG[Mongo]: Agendamento criado → ID = {result.inserted_id}")
+        return True
+
     except Exception as e:
-        print(f"ERRO ao atualizar status do agendamento: {e}")
-        conexao.rollback()
+        print(f"Erro ao inserir agendamento no MongoDB: {e}")
         return False
-    finally:
-        cursor.close()
-        conexao.close()
 
-def excluir_agendamento(agendamento_id):
+
+
+def atualizar_status_agendamento(id_agendamento, novo_status):
     """
-    Exclui um agendamento do banco.
+    Atualiza o status de um agendamento específico.
     """
-    conexao = conectar_mongo()
-    cursor = conexao.cursor()
+    db = conectar_mongo()
+    if db is None:
+        return False
 
-    query = "DELETE FROM agendamento WHERE id = %s;"
-    cursor.execute(query, (agendamento_id,))
-    conexao.commit()
+    try:
+        result = db.agendamentos.update_one(
+            {"_id": ObjectId(id_agendamento)},
+            {"$set": {"status_agendamento": novo_status}}
+        )
 
-    cursor.close()
-    conexao.close()
-    return True
+        print(f"DEBUG[Mongo]: Status atualizado? {result.modified_count > 0}")
+        return result.modified_count > 0
+    
+    except Exception as e:
+        print(f"Erro ao atualizar status no MongoDB: {e}")
+        return False
+
+
+
+def excluir_agendamento(id_agendamento):
+    """
+    Remove um agendamento da coleção.
+    """
+    db = conectar_mongo()
+    if db is None:
+        return False
+
+    try:
+        result = db.agendamentos.delete_one({"_id": ObjectId(id_agendamento)})
+        print(f"DEBUG[Mongo]: Registros apagados = {result.deleted_count}")
+        return result.deleted_count > 0
+    
+    except Exception as e:
+        print("Erro ao excluir agendamento no Mongo:", e)
+        return False
+
+
 
 def buscar_agendamento_por_id(id_agendamento):
     """
-    Busca um agendamento específico pelo ID.
-    Retorna um dicionário com os dados do agendamento ou None se não encontrado.
+    Busca um agendamento específico pelo _id no MongoDB.
+    Retorna o documento completo ou None.
     """
-    conexao = conectar_mongo()
-    if not conexao:
+    db = conectar_mongo()
+    if db is None:
         return None
-        
-    cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    try:
-        query = """
-            SELECT 
-                a.id_agendamento,  # ← Já está correto aqui
-                a.cpf_usuario,
-                a.id_ginasio,
-                a.num_quadra,
-                a.data_solicitacao,
-                a.hora_ini,
-                a.hora_fim,
-                a.status_agendamento,
-                u.nome AS nome_usuario,
-                g.nome AS nome_ginasio
-            FROM 
-                agendamento a
-            JOIN 
-                usuario u ON a.cpf_usuario = u.cpf
-            JOIN 
-                ginasio g ON a.id_ginasio = g.id_ginasio
-            WHERE 
-                a.id_agendamento = %s  # ← Já está correto aqui
-        """
-        cursor.execute(query, (id_agendamento,))
-        resultado = cursor.fetchone()
-        
-        if resultado:
-            agendamento = dict(resultado)
-            print(f"DEBUG: Agendamento ID {id_agendamento} encontrado")
-            return agendamento
-        else:
-            print(f"DEBUG: Agendamento ID {id_agendamento} não encontrado")
-            return None
-            
-    except Exception as e:
-        print(f"Erro ao buscar agendamento por ID: {e}")
-        return None
-    finally:
-        cursor.close()
-        conexao.close()
 
+    try:
+        ag = db.agendamentos.find_one({"_id": ObjectId(id_agendamento)})
+        if ag:
+            ag["id_agendamento"] = ag.pop("_id")  # mantém compatibilidade com o restante do sistema
+
+        return ag
+
+    except Exception as e:
+        print(f"Erro ao localizar agendamento no MongoDB: {e}")
+        return None
+    
 def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim): # --- Refatorada para o MongoDB
     """
     [MongoDB] Verifica se a quadra está disponível no horário solicitado,
@@ -693,80 +671,130 @@ def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
         print(f"Erro ao verificar disponibilidade no MongoDB: {e}")
         return False
 
-def verificar_usuario_existe(cpf):
+def verificar_usuario_existe(cpf: str) -> bool:
     """
-    Verifica se um usuário existe no sistema.
+    Verifica se um usuário existe no sistema pelo CPF (que é o _id da coleção).
+    Conversão direta da versão em PostgreSQL -> MongoDB.
     """
-    conexao = conectar_mongo()
-    if not conexao:
+    db = conectar_mongo()
+    if not db:
         return False
-        
-    cursor = conexao.cursor()
-    try:
-        query = "SELECT COUNT(*) FROM usuario WHERE cpf = %s"
-        cursor.execute(query, (cpf,))
-        count = cursor.fetchone()[0]
-        return count > 0
-    except Exception as e:
-        print(f"Erro ao verificar usuário: {e}")
-        return False
-    finally:
-        cursor.close()
-        conexao.close()
 
-def verificar_estrutura_tabela():
-    """
-    Verifica a estrutura da tabela agendamento
-    """
-    conexao = conectar_mongo()
-    if not conexao:
-        return
-        
-    cursor = conexao.cursor()
     try:
-        query = """
-            SELECT column_name, data_type, is_nullable
-            FROM information_schema.columns 
-            WHERE table_name = 'agendamento'
-            ORDER BY ordinal_position;
-        """
-        cursor.execute(query)
-        colunas = cursor.fetchall()
-        print("=== ESTRUTURA DA TABELA AGENDAMENTO ===")
-        for coluna in colunas:
-            print(f"Coluna: {coluna[0]}, Tipo: {coluna[1]}, Nulo: {coluna[2]}")
+        usuario = db["usuarios"].find_one({"_id": cpf})  # CPF continua sendo a chave primária
+        return usuario is not None
+
     except Exception as e:
-        print(f"Erro ao verificar estrutura: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
+        print(f"Erro ao verificar usuário no MongoDB: {e}")
+        return False
+
+def verificar_estrutura_tabela(sample_size: int = 100):
+    """
+    [MongoDB] Inspeção rápida da coleção 'agendamentos'.
+    - Mostra contagem total
+    - Mostra um documento de amostra
+    - Varre até `sample_size` documentos e lista campos encontrados com tipos observados
+    """
+    db = conectar_mongo()
+    if db is None:
+        print("Falha ao conectar ao MongoDB.")
+        return
+
+    try:
+        coll = db.agendamentos
+        total = coll.count_documents({})
+        print(f"TOTAL de documentos em 'agendamentos': {total}")
+
+        # Documento de amostra
+        amostra = coll.find_one()
+        if amostra:
+            print("\n--- Documento de amostra (primeiro encontrado) ---")
+            for k, v in amostra.items():
+                print(f"{k}: ({type(v).__name__}) -> {v}")
+        else:
+            print("\nColeção vazia — sem documento de amostra.")
+
+        # Analisar tipos observados por campo em até `sample_size` documentos
+        print(f"\nAnalisando até {sample_size} documentos para detectar campos e tipos...")
+        tipos_por_campo = {}
+        cursor = coll.find({}, limit=sample_size)
+        for doc in cursor:
+            for k, v in doc.items():
+                tipos_por_campo.setdefault(k, set()).add(type(v).__name__)
+
+        print("\n--- Campos detectados e tipos observados ---")
+        for campo, tipos in sorted(tipos_por_campo.items()):
+            tipos_list = ", ".join(sorted(tipos))
+            print(f"{campo}: {tipos_list}")
+
+    except Exception as e:
+        print(f"Erro ao verificar estrutura da coleção 'agendamentos': {e}")
+
 
 def verificar_estrutura_agendamento():
     """
-    Verifica a estrutura completa da tabela agendamento
+    [MongoDB] Inspeção detalhada da coleção 'agendamentos':
+    - chama verificar_estrutura_tabela para visão dos campos
+    - exibe estatísticas da coleção (collStats)
+    - exibe índices
+    - exibe regras de validação (validator) se houver
     """
-    conexao = conectar_mongo()
-    if not conexao:
+    db = conectar_mongo()
+    if db is None:
+        print("Falha ao conectar ao MongoDB.")
         return
-        
-    cursor = conexao.cursor()
+
     try:
-        query = """
-            SELECT column_name, data_type, is_nullable, column_default
-            FROM information_schema.columns 
-            WHERE table_name = 'agendamento'
-            ORDER BY ordinal_position;
-        """
-        cursor.execute(query)
-        colunas = cursor.fetchall()
-        print("=== ESTRUTURA COMPLETA DA TABELA AGENDAMENTO ===")
-        for coluna in colunas:
-            print(f"Coluna: {coluna[0]}, Tipo: {coluna[1]}, Nulo: {coluna[2]}, Default: {coluna[3]}")
+        coll_name = "agendamentos"
+        coll = db[coll_name]
+
+        # 1) Informações básicas e campos/tipos (usa a função acima)
+        print("=== INSPEÇÃO RÁPIDA (campos e tipos) ===")
+        verificar_estrutura_tabela(sample_size=200)
+
+        # 2) Estatísticas da coleção
+        try:
+            stats = db.command("collStats", coll_name)
+            print("\n=== collStats (estatísticas da coleção) ===")
+            print(f"size (bytes): {stats.get('size')}")
+            print(f"count (docs): {stats.get('count')}")
+            print(f"storageSize (bytes): {stats.get('storageSize')}")
+            print(f"avgObjSize (bytes): {stats.get('avgObjSize')}")
+        except Exception as e:
+            print(f"Não foi possível obter collStats: {e}")
+
+        # 3) Índices
+        try:
+            print("\n=== Índices da coleção ===")
+            indexes = coll.index_information()
+            for name, info in indexes.items():
+                print(f"- {name}: keys={info.get('key')}, unique={info.get('unique', False)}")
+        except Exception as e:
+            print(f"Erro ao listar índices: {e}")
+
+        # 4) Validação do esquema (validator) — ver se o collection info tem validator
+        try:
+            coll_info = db.command("listCollections", filter={"name": coll_name})
+            collections = coll_info.get("cursor", {}).get("firstBatch", [])
+            if collections:
+                options = collections[0].get("options", {})
+                validator = options.get("validator")
+                validationLevel = options.get("validationLevel")
+                validationAction = options.get("validationAction")
+                if validator:
+                    print("\n=== Regras de validação (validator) ===")
+                    print(f"validationLevel: {validationLevel}, validationAction: {validationAction}")
+                    print(validator)
+                else:
+                    print("\nNenhuma regra de validação (validator) definida para esta coleção.")
+            else:
+                print("\nColeção não encontrada ao checar validação.")
+        except Exception as e:
+            print(f"Erro ao verificar regras de validação: {e}")
+
     except Exception as e:
-        print(f"Erro ao verificar estrutura: {e}")
-    finally:
-        cursor.close()
-        conexao.close()
+        print(f"Erro ao verificar estrutura completa de agendamento: {e}")
+
 
 def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim, motivo_evento=None): # --- Refatorada para o MongoDB
     """
